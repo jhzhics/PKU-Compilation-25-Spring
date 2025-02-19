@@ -1,0 +1,12 @@
+{
+  "image": "maxxing/compiler-dev",
+  "customizations": {
+    "vscode": {
+      "extensions": ["1YiB.rust-bundle",
+      "dustypomerleau.rust-syntax",
+      "fill-labs.dependi",
+      "rust-lang.rust-analyzer",
+      "vadimcn.vscode-lldb"]
+    }
+  }
+}
