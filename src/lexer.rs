@@ -71,7 +71,7 @@ pub enum Token{
     ASSIGN,
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", ident_callback)]
     IDENT(String),
-    #[regex(r"[+-]?([1-9][0-9]*|0)", num_callback)]
+    #[regex(r"[+-]?([0-9])+", num_callback)]
     NUM(i32),
 }
 
