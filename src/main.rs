@@ -1,10 +1,11 @@
-mod lexer;
-
 mod cli;
 use cli::Cli;
-use lexer::Token;
-use logos::Logos;
+
 use std::{io::{Read, Write}};
+use lalrpop_util::lalrpop_mod;
+lalrpop_mod!(sysy);
+
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let mut istream: Box<dyn Read>;
@@ -27,6 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
 
+
     match cli.mode {
         cli::Mode::Koopa => {
             excute_koopa(istream.as_mut(), ostream.as_mut())
@@ -44,20 +46,8 @@ fn excute_koopa(istream: &mut dyn Read, ostream: &mut dyn Write) -> Result<(), B
 {
     let mut input = String::new();
     istream.read_to_string(&mut input)?;
-    
-    let mut lexer_result = Token::lexer(&input);
-    let mut tokens = Vec::new();
-    while let Some(token) = lexer_result.next() {
-        match token {
-            Err(_) => {
-                eprintln!("Lexer Result: {:?}", Token::lexer(&input).collect::<Vec<_>>());
-                return Err("Lexer error".into());
-            }
-            Ok(t) => {
-                tokens.push(t);
-            }
-        }
-    }
-    println!("Lexer Result: {:?}", tokens);
+
+    let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
+    println!("{}", ast);
     Ok(())
 }
