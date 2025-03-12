@@ -30,7 +30,7 @@ pub struct Block
 }
 
 /// FuncType  ::= "int";
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FuncType
 {
     Int

@@ -1,6 +1,8 @@
 mod cli;
 use cli::Cli;
+use ir::build_koopa;
 mod ast;
+mod ir;
 
 use std::{io::{Read, Write}};
 use lalrpop_util::lalrpop_mod;
@@ -49,6 +51,7 @@ fn excute_koopa(istream: &mut dyn Read, ostream: &mut dyn Write) -> Result<(), B
     istream.read_to_string(&mut input)?;
 
     let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
-    println!("{:#?}", ast);
+    let koopa_program = build_koopa(ast)?;
+    koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;
     Ok(())
 }
