@@ -1,5 +1,6 @@
 mod cli;
 use cli::Cli;
+mod ast;
 
 use std::{io::{Read, Write}};
 use lalrpop_util::lalrpop_mod;
@@ -48,6 +49,6 @@ fn excute_koopa(istream: &mut dyn Read, ostream: &mut dyn Write) -> Result<(), B
     istream.read_to_string(&mut input)?;
 
     let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
-    println!("{}", ast);
+    println!("{:#?}", ast);
     Ok(())
 }
