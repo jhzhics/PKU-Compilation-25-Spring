@@ -1,13 +1,13 @@
 mod cli;
-use cli::Cli;
-use ir::build_koopa;
+mod asm;
 mod ast;
 mod ir;
+use cli::Cli;
 
-use std::{io::{Read, Write}};
+
 use lalrpop_util::lalrpop_mod;
+use std::{io::{Read, Write}, os};
 lalrpop_mod!(sysy);
-
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -30,28 +30,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-
-
     match cli.mode {
-        cli::Mode::Koopa => {
-            excute_koopa(istream.as_mut(), ostream.as_mut())
-        }
-        cli::Mode::Riscv => {
-            return Err("Riscv mode is not implemented yet".into());
-        }
+        cli::Mode::Koopa => excute_koopa(istream.as_mut(), ostream.as_mut()),
+        cli::Mode::Riscv => excute_riscv(istream.as_mut(), ostream.as_mut()),
         cli::Mode::Perf => {
             return Err("Perf mode is not implemented yet".into());
         }
     }
 }
 
-fn excute_koopa(istream: &mut dyn Read, ostream: &mut dyn Write) -> Result<(), Box<dyn std::error::Error>>
+fn excute_riscv(
+    istream: &mut dyn Read,
+    ostream: &mut dyn Write
+) -> Result<(), Box<dyn std::error::Error>> 
 {
     let mut input = String::new();
     istream.read_to_string(&mut input)?;
 
     let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
-    let koopa_program = build_koopa(ast)?;
+    let koopa_program = ir::build_koopa(ast)?;
+
+    let compiled = asm::compile(koopa_program);
+    ostream.write(compiled.as_bytes())?;
+    ostream.flush()?;
+    Ok(())
+}
+
+fn excute_koopa(
+    istream: &mut dyn Read,
+    ostream: &mut dyn Write,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = String::new();
+    istream.read_to_string(&mut input)?;
+
+    let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
+    let koopa_program = ir::build_koopa(ast)?;
     koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;
     Ok(())
 }

@@ -7,7 +7,7 @@ pub enum Mode {
     /// Generate RISC-V assembly
     Riscv,
     /// Performance test
-    Perf
+    Perf,
 }
 pub struct Cli {
     pub mode: Mode,
@@ -33,7 +33,7 @@ If no output file is specified, write to stdout
 impl Cli {
     pub fn parse() -> Self {
         let mode: Mode;
-        let input_file ;
+        let input_file;
         let output_file;
 
         if env::args().len() > 5 || env::args().len() == 1 {
@@ -58,22 +58,16 @@ impl Cli {
             }
         }
 
-        if args.len() == 2
-        {
+        if args.len() == 2 {
             input_file = None;
             output_file = None;
-        
-        }
-        else if args.len() == 3 {
+        } else if args.len() == 3 {
             input_file = Some(args[2].clone());
             output_file = None;
-        }
-        else if args.len() == 4 {
+        } else if args.len() == 4 {
             print!("{}", USAGE);
             exit(1);
-        }
-        else
-        {
+        } else {
             assert!(args.len() == 5);
             input_file = Some(args[2].clone());
             if args[3] != "-o" {
@@ -82,9 +76,8 @@ impl Cli {
             }
             output_file = Some(args[4].clone());
         }
-        
-        Self
-        {
+
+        Self {
             mode,
             input_file,
             output_file,
