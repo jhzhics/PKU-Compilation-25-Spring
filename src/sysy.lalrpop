@@ -23,7 +23,19 @@ Number: Number = <value: IntConst> => Number { <> };
 
 Ident: Ident = r"[_a-zA-Z][_a-zA-Z0-9]*" => Ident { name: <>.to_string() };
 
-Stmt: Stmt = "return" <number: Number> ";" => Stmt { <> };
+UnaryOp: UnaryOp = {
+  "+" => UnaryOp::Plus,
+  "-" => UnaryOp::Minus,
+  "!" => UnaryOp::Not,
+};
+
+Exp: Exp = {
+  <number: Number> => Exp::Number { value: number },
+  "(" <exp: Exp> ")" => exp,
+  <unary_op: UnaryOp> <exp: Exp> => Exp::UnaryExp { unary_op, exp: Box::new(exp) },
+};
+
+Stmt: Stmt = "return" <exp: Exp> ";" => Stmt { <> };
 
 Block: Block = "{" <stmt: Stmt> "}" => Block { <> };
 

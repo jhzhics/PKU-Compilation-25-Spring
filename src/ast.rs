@@ -1,15 +1,37 @@
 //! Abstract Syntax Tree (AST) module
 
+use std::option;
+
 /// Number    ::= INT_CONST;
 #[derive(Debug)]
 pub struct Number {
     pub value: i32,
 }
 
-/// Stmt      ::= "return" Number ";";
+/// UnaryOp     ::= "+" | "-" | "!";
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOp {
+    Plus,
+    Minus,
+    Not,
+}
+
+/// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
+#[derive(Debug)]
+pub enum Exp {
+    Number {
+        value: Number,
+    },
+    UnaryExp {
+        unary_op: UnaryOp,
+        exp: Box<Exp>,
+    },
+}
+
+/// Stmt        ::= "return" Exp ";";
 #[derive(Debug)]
 pub struct Stmt {
-    pub number: Number,
+    pub exp: Exp,
 }
 
 /// Ident
