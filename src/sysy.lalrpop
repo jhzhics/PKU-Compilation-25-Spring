@@ -30,7 +30,7 @@ UnaryOp: UnaryOp = {
 };
 
 Exp: Exp = {
-  <exp: AddExp> => exp
+  LOrExp
 };
 
 PrimaryExp: Exp = {
@@ -73,6 +73,62 @@ MulExp: Exp = {
         binary_op: BinaryOp::Mod,
         lhs: Box::new(mul_exp),
         rhs: Box::new(unary_exp),
+    }
+};
+
+RelExp: Exp = {
+    AddExp,
+    <rel_exp: RelExp> "<" <add_exp: AddExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Less,
+        lhs: Box::new(rel_exp),
+        rhs: Box::new(add_exp),
+    },
+    <rel_exp: RelExp> ">" <add_exp: AddExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Greater,
+        lhs: Box::new(rel_exp),
+        rhs: Box::new(add_exp),
+    },
+    <rel_exp: RelExp> "<=" <add_exp: AddExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::LessEqual,
+        lhs: Box::new(rel_exp),
+        rhs: Box::new(add_exp),
+    },
+    <rel_exp: RelExp> ">=" <add_exp: AddExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::GreaterEqual,
+        lhs: Box::new(rel_exp),
+        rhs: Box::new(add_exp),
+    }
+};
+
+LAndExp: Exp = {
+    EqExp,
+    <land_exp: LAndExp> "&&" <eq_exp: EqExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::And,
+        lhs: Box::new(land_exp),
+        rhs: Box::new(eq_exp),
+    }
+};
+
+LOrExp: Exp = {
+    LAndExp,
+    <lor_exp: LOrExp> "||" <land_exp: LAndExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Or,
+        lhs: Box::new(lor_exp),
+        rhs: Box::new(land_exp),
+    }
+};
+
+EqExp: Exp = {
+    RelExp,
+    <eq_exp: EqExp> "==" <rel_exp: RelExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Equal,
+        lhs: Box::new(eq_exp),
+        rhs: Box::new(rel_exp),
+    },
+    <eq_exp: EqExp> "!=" <rel_exp: RelExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::NotEqual,
+        lhs: Box::new(eq_exp),
+        rhs: Box::new(rel_exp),
     }
 };
 

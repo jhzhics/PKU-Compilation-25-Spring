@@ -21,7 +21,15 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
-    Mod
+    Mod,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
+    Equal,
+    NotEqual,
+    And,
+    Or
 }
 
 /// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
