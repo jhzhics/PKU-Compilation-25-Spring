@@ -1,7 +1,4 @@
 //! Abstract Syntax Tree (AST) module
-
-use std::option;
-
 /// Number    ::= INT_CONST;
 #[derive(Debug)]
 pub struct Number {

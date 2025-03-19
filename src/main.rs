@@ -6,8 +6,7 @@ use cli::Cli;
 
 use lalrpop_util::lalrpop_mod;
 use std::{
-    io::{Read, Write},
-    os,
+    io::{Read, Write}
 };
 lalrpop_mod!(sysy);
 
