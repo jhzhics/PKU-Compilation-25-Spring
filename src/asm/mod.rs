@@ -84,21 +84,38 @@ impl GenerateIns<DataFlowGraph> for Value {
                 let rhs = ins.rhs().generate_ins(asm, dfg).expect("Expect an expr");
                 let reg: String = backend::alloc_ins_rg(self, Some(rhs.as_str()));
 
-
                 match ins.op() {
                     BinaryOp::Eq =>
                     {
                         asm.push_back(format!("xor {}, {}, {}", reg, lhs, rhs));
                         asm.push_back(format!("seqz {}, {}", reg, reg));
-                        Some(rhs)
+                        Some(reg)
                     },
-
+                    BinaryOp::Add =>
+                    {
+                        asm.push_back(format!("add {}, {}, {}", reg, lhs, rhs));
+                        Some(reg)
+                    }
                     BinaryOp::Sub =>
                     {
                         asm.push_back(format!("sub {}, {}, {}", reg, lhs, rhs));
-                        Some(rhs)
+                        Some(reg)
                     },
-
+                    BinaryOp::Mul =>
+                    {
+                        asm.push_back(format!("mul {}, {}, {}", reg, lhs, rhs));
+                        Some(reg)
+                    }
+                    BinaryOp::Div =>
+                    {
+                        asm.push_back(format!("div {}, {}, {}", reg, lhs, rhs));
+                        Some(reg)
+                    }
+                    BinaryOp::Mod =>
+                    {
+                        asm.push_back(format!("rem {}, {}, {}", reg, lhs, rhs));
+                        Some(reg)
+                    }
                     other => panic!("Not implement binary op {:#?}", other)
                 }
             },
