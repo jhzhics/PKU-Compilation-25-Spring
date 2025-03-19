@@ -30,9 +30,50 @@ UnaryOp: UnaryOp = {
 };
 
 Exp: Exp = {
+  <exp: AddExp> => exp
+};
+
+PrimaryExp: Exp = {
   <number: Number> => Exp::Number { value: number },
   "(" <exp: Exp> ")" => exp,
-  <unary_op: UnaryOp> <exp: Exp> => Exp::UnaryExp { unary_op, exp: Box::new(exp) },
+};
+
+UnaryExp: Exp = {
+    PrimaryExp,
+    <unary_op: UnaryOp> <exp: UnaryExp> => Exp::UnaryExp { unary_op, exp: Box::new(exp) },
+};
+
+AddExp: Exp = {
+    MulExp,
+    <add_exp: AddExp> "+" <mul_exp: MulExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Add,
+        lhs: Box::new(add_exp),
+        rhs: Box::new(mul_exp),
+    },
+    <add_exp: AddExp> "-" <mul_exp: MulExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Sub,
+        lhs: Box::new(add_exp),
+        rhs: Box::new(mul_exp),
+    }
+};
+
+MulExp: Exp = {
+    UnaryExp,
+    <mul_exp: MulExp> "*" <unary_exp: UnaryExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Mul,
+        lhs: Box::new(mul_exp),
+        rhs: Box::new(unary_exp),
+    },
+    <mul_exp: MulExp> "/" <unary_exp: UnaryExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Div,
+        lhs: Box::new(mul_exp),
+        rhs: Box::new(unary_exp),
+    },
+    <mul_exp: MulExp> "%" <unary_exp: UnaryExp> => Exp::BinaryExp {
+        binary_op: BinaryOp::Mod,
+        lhs: Box::new(mul_exp),
+        rhs: Box::new(unary_exp),
+    }
 };
 
 Stmt: Stmt = "return" <exp: Exp> ";" => Stmt { <> };

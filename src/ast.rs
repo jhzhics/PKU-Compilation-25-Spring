@@ -1,4 +1,5 @@
 //! Abstract Syntax Tree (AST) module
+
 /// Number    ::= INT_CONST;
 #[derive(Debug)]
 pub struct Number {
@@ -13,6 +14,16 @@ pub enum UnaryOp {
     Not,
 }
 
+/// BinaryOp    ::= "+" | "-" | "*" | "/" | "%"
+#[derive(Debug, Clone, Copy)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod
+}
+
 /// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
 #[derive(Debug)]
 pub enum Exp {
@@ -23,9 +34,14 @@ pub enum Exp {
         unary_op: UnaryOp,
         exp: Box<Exp>,
     },
+    BinaryExp{
+        binary_op: BinaryOp,
+        lhs: Box<Exp>,
+        rhs: Box<Exp>
+    }
 }
 
-/// Stmt        ::= "return" Exp ";";
+/// Stmt        ::= "return" Exp ";"
 #[derive(Debug)]
 pub struct Stmt {
     pub exp: Exp,
