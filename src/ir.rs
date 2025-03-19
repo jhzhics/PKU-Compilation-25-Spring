@@ -2,7 +2,7 @@
 use super::ast::{*};
 
 use std::collections::LinkedList;
-use koopa::ir::{builder_traits::*};
+use koopa::ir::{builder_traits::*, Value};
 use koopa::ir as koopa_ir;
 
 pub fn build_koopa(ast: CompUnit) -> koopa_ir::Program {
@@ -37,8 +37,8 @@ impl TryFrom<&BinaryOp> for koopa_ir::BinaryOp {
             BinaryOp::GreaterEqual => Ok(koopa_ir::BinaryOp::Ge),
             BinaryOp::Equal => Ok(koopa_ir::BinaryOp::Eq),
             BinaryOp::NotEqual => Ok(koopa_ir::BinaryOp::NotEq),
-            BinaryOp::And => Ok(koopa_ir::BinaryOp::And),
-            BinaryOp::Or => Ok(koopa_ir::BinaryOp::Or),
+            BinaryOp::And => Err(()),
+            BinaryOp::Or => Err(()),
             _ => Err(()),
         }
     }
@@ -85,17 +85,44 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
                 let (lhs_value, mut lhs_value_list) = lhs.koopa_append(dfg);
                 let (rhs_value, mut rhs_value_list) = rhs.koopa_append(dfg);
                 let koopa_binary_op: Result<koopa_ir::BinaryOp, _> = binary_op.try_into();
+                let mut new_value_list: LinkedList<Value> = LinkedList::new();
                 let value;
                 if let Ok(binary_op) = koopa_binary_op
                 {
                     value = dfg.new_value().binary(binary_op, lhs_value, rhs_value);
+                    new_value_list.push_back(value);
                 }
                 else {
-                    panic!("Expect All Ops to be translated");
+                    match &binary_op {
+                        BinaryOp::And =>
+                        {   
+                            let zero = dfg.new_value().integer(0);
+                            let l = dfg.new_value().binary(koopa_ir::BinaryOp::NotEq,
+                                zero, lhs_value);
+                            let r = dfg.new_value().binary(koopa_ir::BinaryOp::NotEq,
+                                zero, rhs_value);
+                            value = dfg.new_value().binary(koopa_ir::BinaryOp::And,
+                                l, r);
+                            new_value_list.push_back(l);
+                            new_value_list.push_back(r);
+                            new_value_list.push_back(value);
+                        },
+                        BinaryOp::Or =>
+                        {
+                            let zero = dfg.new_value().integer(0);
+                            let or = dfg.new_value().binary(koopa_ir::BinaryOp::Or,
+                                lhs_value, rhs_value);
+                            value = dfg.new_value().binary(koopa_ir::BinaryOp::NotEq,
+                                zero, or);
+                            new_value_list.push_back(or);
+                            new_value_list.push_back(value);
+                        },
+                        _ => panic!("Binary Op Not expected")
+                    };
                 }
                 
                 lhs_value_list.append(&mut rhs_value_list);
-                lhs_value_list.push_back(value);
+                lhs_value_list.append(&mut new_value_list);
                 (value, lhs_value_list)
             }
         }
@@ -104,8 +131,8 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
 
 impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for Stmt {
     fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> ValueList {
-        let (_, mut value_list) = self.exp.koopa_append(dfg);
-        value_list.push_back(dfg.new_value().ret(value_list.back().clone().map(|v| v.clone())));
+        let (value, mut value_list) = self.exp.koopa_append(dfg);
+        value_list.push_back(dfg.new_value().ret(Some(value)));
         value_list
     }
 }

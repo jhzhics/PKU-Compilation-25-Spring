@@ -39,7 +39,7 @@ pub fn get_ins_reg(value: &Value) -> Option<String>
     global_map.get(value).map(|s| s.clone())
 }
 
-pub fn alloc_ins_rg(value: &Value, reg: Option<&str>) ->String
+pub fn alloc_ins_reg(value: &Value, reg: Option<&str>) ->String
 {
     let s = if reg.is_none() { get_new_reg() } else 
     { 
