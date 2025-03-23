@@ -1,7 +1,7 @@
 mod asm;
 mod ast;
 mod cli;
-mod ir;
+// mod ir;
 use cli::Cli;
 
 use lalrpop_util::lalrpop_mod;
@@ -48,11 +48,11 @@ fn excute_riscv(
     istream.read_to_string(&mut input)?;
 
     let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
-    let koopa_program = ir::build_koopa(ast);
+    // let koopa_program = ir::build_koopa(ast);
 
-    let compiled = asm::compile(koopa_program);
-    ostream.write(compiled.as_bytes())?;
-    ostream.flush()?;
+    // let compiled = asm::compile(koopa_program);
+    // ostream.write(compiled.as_bytes())?;
+    // ostream.flush()?;
     Ok(())
 }
 
@@ -65,7 +65,7 @@ fn excute_koopa(
 
     let ast = sysy::CompUnitParser::new().parse(&input).expect("Expect to be a correct SysY Program");
     println!("AST:\n{:#?}", ast);
-    let koopa_program = ir::build_koopa(ast);
-    koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;
+    // let koopa_program = ir::build_koopa(ast);
+    // koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;
     Ok(())
 }

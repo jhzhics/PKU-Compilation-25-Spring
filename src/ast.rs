@@ -38,6 +38,9 @@ pub enum Exp {
     Number {
         value: Number,
     },
+    Ident {
+        ident: Ident,
+    },
     UnaryExp {
         unary_op: UnaryOp,
         exp: Box<Exp>,
@@ -49,10 +52,12 @@ pub enum Exp {
     }
 }
 
-/// Stmt        ::= "return" Exp ";"
+///BlockItem     ::= Decl | Stmt;
 #[derive(Debug)]
-pub struct Stmt {
-    pub exp: Exp,
+pub enum BlockItem
+{
+    Return{exp: Exp},
+    ConstDecl{btype: ValType, const_defs:Vec<(Ident, Exp)>}
 }
 
 /// Ident
@@ -64,19 +69,19 @@ pub struct Ident {
 /// Block     ::= "{" Stmt "}";
 #[derive(Debug)]
 pub struct Block {
-    pub stmt: Stmt,
+    pub block_items: Vec<BlockItem>
 }
 
 /// FuncType  ::= "int";
 #[derive(Debug, Clone, Copy)]
-pub enum FuncType {
+pub enum ValType {
     Int,
 }
 
 /// FuncDef   ::= FuncType IDENT "(" ")" Block;
 #[derive(Debug)]
 pub struct FuncDef {
-    pub func_type: FuncType,
+    pub func_type: ValType,
     pub ident: Ident,
     pub block: Block,
 }

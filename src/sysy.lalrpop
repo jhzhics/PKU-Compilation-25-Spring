@@ -23,19 +23,20 @@ Number: Number = <value: IntConst> => Number { <> };
 
 Ident: Ident = r"[_a-zA-Z][_a-zA-Z0-9]*" => Ident { name: <>.to_string() };
 
+LVal: Exp = {
+  <ident: Ident> => Exp::Ident { ident },
+};
+
 UnaryOp: UnaryOp = {
   "+" => UnaryOp::Plus,
   "-" => UnaryOp::Minus,
   "!" => UnaryOp::Not,
 };
 
-Exp: Exp = {
-  LOrExp
-};
-
 PrimaryExp: Exp = {
   <number: Number> => Exp::Number { value: number },
   "(" <exp: Exp> ")" => exp,
+  <lval: LVal> => lval,
 };
 
 UnaryExp: Exp = {
@@ -132,11 +133,58 @@ EqExp: Exp = {
     }
 };
 
-Stmt: Stmt = "return" <exp: Exp> ";" => Stmt { <> };
+Exp: Exp = {
+  LOrExp
+};
 
-Block: Block = "{" <stmt: Stmt> "}" => Block { <> };
+ConstExp: Exp = {
+  <exp: Exp> => exp
+};
 
-FuncType: FuncType = "int" => FuncType::Int;
+ConstInitVal: Exp = {
+  <const_exp: ConstExp> => const_exp
+};
+
+ConstDef: (Ident, Exp) = {
+  <ident: Ident> "=" <exp: ConstInitVal> => (ident, exp)
+};
+
+ConstDecl: BlockItem = {
+  "const" <btype: BType> <first: ConstDef> <rest: ("," ConstDef)*> ";" => {
+    let mut const_defs = vec![first];
+    for (_, const_def) in rest {
+      const_defs.push(const_def);
+    }
+    BlockItem::ConstDecl {
+      btype,
+      const_defs,
+    }
+  }
+}
+
+Stmt: BlockItem = "return" <exp: Exp> ";" => BlockItem::Return {
+  exp
+};
+
+Decl: BlockItem = {
+  <const_decl: ConstDecl> => const_decl
+};
+
+
+BlockItem: BlockItem = {
+  <decl: Decl> => decl,
+  <stmt: Stmt> => stmt
+};
+
+Block: Block = {
+  "{" <block_items: (BlockItem)*> "}" => Block {
+    block_items
+  }
+};
+
+FuncType: ValType = "int" => ValType::Int;
+
+BType: ValType = "int" => ValType::Int;
 
 FuncDef: FuncDef = {
   <func_type: FuncType> <ident: Ident> "(" ")" <block: Block> => {

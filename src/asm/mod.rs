@@ -1,8 +1,6 @@
 mod backend;
-use koopa::ir::{dfg::DataFlowGraph, entities::ValueData, *};
-use std::{collections::LinkedList, option, thread::panicking};
-
-use crate::ast::FuncDef;
+use koopa::ir::{dfg::DataFlowGraph, *};
+use std::collections::LinkedList;
 
 pub fn compile(prog: Program) -> String {
     let mut inst_list = LinkedList::<String>::new();
