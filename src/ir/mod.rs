@@ -63,9 +63,20 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Number {
     }
 }
 
-impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Ident {
-    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> koopa_ir::Value {
-        dfg.new_value().integer(symtable::get(self.name.as_str()).expect("Expect an existing ident"))
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for Ident {
+    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> (koopa_ir::Value, ValueList) {
+        let entry = symtable::get(&self.name).expect("Use a symbol that is not declared");
+        let (value, constant) = entry;
+        match constant {
+            Some(_) => (value, ValueList::new()),
+            None =>
+            {
+                let load_inst = dfg.new_value().load(value);
+                let mut value_list = ValueList::new();
+                value_list.push_front(load_inst);
+                (load_inst, value_list)
+            }
+        }
     }
 }
 
@@ -78,7 +89,7 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
     fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> (koopa_ir::Value, ValueList) {
         match self {
             Exp::Number{value} => (value.koopa_append(dfg), ValueList::new()),
-            Exp::Ident { ident} => (ident.koopa_append(dfg), ValueList::new()),
+            Exp::Ident { ident} => ident.koopa_append(dfg),
             Exp::UnaryExp{unary_op : UnaryOp::Plus, exp} => exp.koopa_append(dfg),
             Exp::UnaryExp{unary_op, exp} => {
                 let (value, mut value_list) = exp.koopa_append(dfg);
@@ -149,10 +160,43 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for 
                 assert!(btype.clone() == ValType::Int);
                 const_defs.iter().for_each(|(ident, exp)|
                 {
-                    let value : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
-                    symtable::insert(ident.name.as_str(), value);
+                    let constant : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
+                    let value = dfg.new_value().integer(constant);
+                    symtable::insert(ident.name.as_str(), value, Some(constant));
                 });
                 ValueList::new()
+            },
+            BlockItem::VarDecl { btype, var_defs } =>
+            {
+                assert!(btype.clone() == ValType::Int);
+                let mut value_list = ValueList::new();
+                var_defs.iter().for_each(|(ident, exp)|
+                {
+                    let var = dfg.new_value().alloc(btype.into());
+                    symtable::insert(ident.name.as_str(), var, None);
+                    value_list.push_back(var);
+                    if let Some(exp) = exp
+                    {
+                        let (val, values)  = exp.koopa_append(dfg);
+                        value_list.extend(values);
+                        value_list.push_back(
+                            dfg.new_value().store(val, var)
+                        );
+                    }
+                });
+                value_list
+            },
+            BlockItem::Assign { ident, exp } =>
+            {
+                let mut value_list = ValueList::new();
+                let (var, constant) = symtable::get(&ident.name).expect("Assign a variable before declared");
+                assert!(constant.is_none(), "Try to assign a constant");
+                let (val, values)  = exp.koopa_append(dfg);
+                value_list.extend(values);
+                value_list.push_back(
+                    dfg.new_value().store(val, var)
+                );  
+                value_list
             }
         }
     }
@@ -209,8 +253,9 @@ impl TryFrom<&Exp> for i32{
             Exp::Number { value } => Ok(value.value),
             Exp::Ident { ident } => 
             {
-                let value = symtable::get(ident.name.as_str());
-                value.ok_or("Non-existing ident".to_string())
+                let value = symtable::get(ident.name.as_str())
+                .expect("Use unrecognized symbol in const Exp").1.expect("Use variable in const Exp");
+                Ok(value)
             },
             Exp::BinaryExp { binary_op, lhs, rhs } =>
             {

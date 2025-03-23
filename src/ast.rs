@@ -57,7 +57,9 @@ pub enum Exp {
 pub enum BlockItem
 {
     Return{exp: Exp},
-    ConstDecl{btype: ValType, const_defs:Vec<(Ident, Exp)>}
+    ConstDecl{btype: ValType, const_defs:Vec<(Ident, Exp)>},
+    VarDecl{btype: ValType, var_defs:Vec<(Ident, Option<Exp>)>},
+    Assign{ident: Ident, exp: Exp}
 }
 
 /// Ident

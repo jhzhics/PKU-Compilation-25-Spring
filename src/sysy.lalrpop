@@ -145,12 +145,21 @@ ConstInitVal: Exp = {
   <const_exp: ConstExp> => const_exp
 };
 
+InitVal: Exp = {
+  <init_val: Exp> => init_val
+};
+
 ConstDef: (Ident, Exp) = {
   <ident: Ident> "=" <exp: ConstInitVal> => (ident, exp)
 };
 
+VarDef: (Ident, Option<Exp>) = {
+  <ident: Ident> "=" <exp: InitVal> => (ident, Some(exp)),
+  <ident: Ident> => (ident, None)
+};
+
 ConstDecl: BlockItem = {
-  "const" <btype: BType> <first: ConstDef> <rest: ("," ConstDef)*> ";" => {
+  "const" <btype: BType> <first: ConstDef> <rest: ("," ConstDef)*> => {
     let mut const_defs = vec![first];
     for (_, const_def) in rest {
       const_defs.push(const_def);
@@ -162,12 +171,36 @@ ConstDecl: BlockItem = {
   }
 }
 
-Stmt: BlockItem = "return" <exp: Exp> ";" => BlockItem::Return {
-  exp
+VarDecl: BlockItem = {
+  <btype: BType> <first: VarDef> <rest: ("," VarDef)*> ";" => {
+    let mut var_defs = vec![first];
+    for (_, var_def) in rest {
+      var_defs.push(var_def);
+    }
+    BlockItem::VarDecl {
+      btype,
+      var_defs,
+    }
+  }
 };
 
+Stmt: BlockItem = 
+{
+  "return" <exp: Exp> ";" => BlockItem::Return { exp },
+  <lval: LVal> "=" <exp: Exp> ";" => BlockItem::Assign {
+    ident:
+    {if let Exp::Ident { ident } = lval {
+      ident
+    } else {
+      panic!("Expected an identifier")
+    }},
+    exp
+  }
+}
+
 Decl: BlockItem = {
-  <const_decl: ConstDecl> => const_decl
+  <const_decl: ConstDecl> => const_decl,
+  <var_decl: VarDecl> => var_decl
 };
 
 
