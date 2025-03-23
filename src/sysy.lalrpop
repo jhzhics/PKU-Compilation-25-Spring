@@ -104,7 +104,7 @@ RelExp: Exp = {
 LAndExp: Exp = {
     EqExp,
     <land_exp: LAndExp> "&&" <eq_exp: EqExp> => Exp::BinaryExp {
-        binary_op: BinaryOp::And,
+        binary_op: BinaryOp::LogicAnd,
         lhs: Box::new(land_exp),
         rhs: Box::new(eq_exp),
     }
@@ -113,7 +113,7 @@ LAndExp: Exp = {
 LOrExp: Exp = {
     LAndExp,
     <lor_exp: LOrExp> "||" <land_exp: LAndExp> => Exp::BinaryExp {
-        binary_op: BinaryOp::Or,
+        binary_op: BinaryOp::LogicOr,
         lhs: Box::new(lor_exp),
         rhs: Box::new(land_exp),
     }
@@ -159,7 +159,7 @@ VarDef: (Ident, Option<Exp>) = {
 };
 
 ConstDecl: BlockItem = {
-  "const" <btype: BType> <first: ConstDef> <rest: ("," ConstDef)*> => {
+  "const" <btype: BType> <first: ConstDef> <rest: ("," ConstDef)*> ";" => {
     let mut const_defs = vec![first];
     for (_, const_def) in rest {
       const_defs.push(const_def);
