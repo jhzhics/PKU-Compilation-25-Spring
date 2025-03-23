@@ -1,5 +1,5 @@
 //! Abstract Syntax Tree (AST) module
-
+//! 
 /// Number    ::= INT_CONST;
 #[derive(Debug)]
 pub struct Number {
@@ -40,7 +40,7 @@ pub enum Exp {
     },
     Ident {
         ident: Ident,
-    },
+    }, 
     UnaryExp {
         unary_op: UnaryOp,
         exp: Box<Exp>,
@@ -73,7 +73,7 @@ pub struct Block {
 }
 
 /// FuncType  ::= "int";
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValType {
     Int,
 }

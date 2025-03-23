@@ -1,4 +1,4 @@
-
+mod symtable;
 use super::ast::{*};
 
 use std::collections::LinkedList;
@@ -63,6 +63,12 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Number {
     }
 }
 
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Ident {
+    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> koopa_ir::Value {
+        dfg.new_value().integer(symtable::get(self.name.as_str()).expect("Expect an existing ident"))
+    }
+}
+
 impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for Exp {
 
     /// # Returns
@@ -72,6 +78,7 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
     fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> (koopa_ir::Value, ValueList) {
         match self {
             Exp::Number{value} => (value.koopa_append(dfg), ValueList::new()),
+            Exp::Ident { ident} => (ident.koopa_append(dfg), ValueList::new()),
             Exp::UnaryExp{unary_op : UnaryOp::Plus, exp} => exp.koopa_append(dfg),
             Exp::UnaryExp{unary_op, exp} => {
                 let (value, mut value_list) = exp.koopa_append(dfg);
@@ -129,19 +136,38 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
     }
 }
 
-impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for Stmt {
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for BlockItem {
     fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> ValueList {
-        let (value, mut value_list) = self.exp.koopa_append(dfg);
-        value_list.push_back(dfg.new_value().ret(Some(value)));
-        value_list
+        match self {
+            BlockItem::Return { exp } => {
+                let (value, mut value_list) = exp.koopa_append(dfg);
+                value_list.push_back(dfg.new_value().ret(Some(value)));
+                value_list
+            },
+            BlockItem::ConstDecl { btype, const_defs } =>
+            {
+                assert!(btype.clone() == ValType::Int);
+                const_defs.iter().for_each(|(ident, exp)|
+                {
+                    let value : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
+                    symtable::insert(ident.name.as_str(), value);
+                });
+                ValueList::new()
+            }
+        }
     }
 }
 
 impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::BasicBlock, ValueList)> for Block {
     fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> (koopa_ir::BasicBlock, ValueList) {
         let entry = dfg.new_bb().basic_block(Some("%entry".to_string()));
-        let values = self.stmt.koopa_append(dfg);
-        (entry, values)
+        let mut ret_values = ValueList::new();
+        for item in &self.block_items
+        {
+            let values = item.koopa_append(dfg);
+            ret_values.extend(values);
+        }
+        (entry, ret_values)
     }
 }
 
@@ -169,5 +195,52 @@ impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
 impl KoopaAppend<koopa_ir::Program, ()> for CompUnit {
     fn koopa_append(&self, program: &mut koopa_ir::Program) -> () {
         self.func_def.koopa_append(program);
+    }
+}
+
+/// # Brief
+/// Try to get the i32 value of an exp.
+/// # Returns
+/// None if it cannot be calculated at compiling time.
+impl TryFrom<&Exp> for i32{
+    type Error = String;
+    fn try_from(exp: &Exp) -> Result<Self, Self::Error> {
+        match exp {
+            Exp::Number { value } => Ok(value.value),
+            Exp::Ident { ident } => 
+            {
+                let value = symtable::get(ident.name.as_str());
+                value.ok_or("Non-existing ident".to_string())
+            },
+            Exp::BinaryExp { binary_op, lhs, rhs } =>
+            {
+                let lhs: i32 = lhs.as_ref().try_into()?;
+                let rhs: i32 = rhs.as_ref().try_into()?;
+                match binary_op {
+                    BinaryOp::Add => Ok(lhs + rhs),
+                    BinaryOp::Div => Ok(lhs / rhs),
+                    BinaryOp::And => Ok(lhs & rhs),
+                    BinaryOp::Equal => Ok((lhs == rhs) as i32),
+                    BinaryOp::Greater => Ok((lhs > rhs) as i32),
+                    BinaryOp::GreaterEqual => Ok((lhs >= rhs) as i32),
+                    BinaryOp::Less => Ok((lhs < rhs) as i32),
+                    BinaryOp::LessEqual => Ok((lhs <= rhs) as i32),
+                    BinaryOp::Mod => Ok(lhs % rhs),
+                    BinaryOp::Mul => Ok(lhs * rhs),
+                    BinaryOp::NotEqual => Ok((lhs != rhs) as i32),
+                    BinaryOp::Or => Ok(lhs | rhs),
+                    BinaryOp::Sub => Ok(lhs - rhs)
+                }
+            },
+            Exp::UnaryExp { unary_op, exp } =>
+            {
+                let val: i32 = exp.as_ref().try_into()?;
+                match unary_op {
+                    UnaryOp::Minus => Ok(-val),
+                    UnaryOp::Not => Ok((val == 0) as i32),
+                    UnaryOp::Plus => Ok(val)
+                }
+            }
+        }
     }
 }
