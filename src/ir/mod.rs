@@ -37,8 +37,8 @@ impl TryFrom<&BinaryOp> for koopa_ir::BinaryOp {
             BinaryOp::GreaterEqual => Ok(koopa_ir::BinaryOp::Ge),
             BinaryOp::Equal => Ok(koopa_ir::BinaryOp::Eq),
             BinaryOp::NotEqual => Ok(koopa_ir::BinaryOp::NotEq),
-            BinaryOp::And => Err(()),
-            BinaryOp::Or => Err(()),
+            BinaryOp::LogicAnd => Err(()),
+            BinaryOp::LogicOr => Err(()),
             _ => Err(()),
         }
     }
@@ -112,7 +112,7 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
                 }
                 else {
                     match &binary_op {
-                        BinaryOp::And =>
+                        BinaryOp::LogicAnd =>
                         {   
                             let zero = dfg.new_value().integer(0);
                             let l = dfg.new_value().binary(koopa_ir::BinaryOp::NotEq,
@@ -125,7 +125,7 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
                             new_value_list.push_back(r);
                             new_value_list.push_back(value);
                         },
-                        BinaryOp::Or =>
+                        BinaryOp::LogicOr =>
                         {
                             let zero = dfg.new_value().integer(0);
                             let or = dfg.new_value().binary(koopa_ir::BinaryOp::Or,
@@ -264,7 +264,7 @@ impl TryFrom<&Exp> for i32{
                 match binary_op {
                     BinaryOp::Add => Ok(lhs + rhs),
                     BinaryOp::Div => Ok(lhs / rhs),
-                    BinaryOp::And => Ok(lhs & rhs),
+                    BinaryOp::LogicAnd => Ok(((lhs != 0) && (rhs != 0)) as i32),
                     BinaryOp::Equal => Ok((lhs == rhs) as i32),
                     BinaryOp::Greater => Ok((lhs > rhs) as i32),
                     BinaryOp::GreaterEqual => Ok((lhs >= rhs) as i32),
@@ -273,7 +273,7 @@ impl TryFrom<&Exp> for i32{
                     BinaryOp::Mod => Ok(lhs % rhs),
                     BinaryOp::Mul => Ok(lhs * rhs),
                     BinaryOp::NotEqual => Ok((lhs != rhs) as i32),
-                    BinaryOp::Or => Ok(lhs | rhs),
+                    BinaryOp::LogicOr => Ok(((lhs != 0) || (rhs != 0)) as i32),
                     BinaryOp::Sub => Ok(lhs - rhs)
                 }
             },

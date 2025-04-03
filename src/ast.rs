@@ -28,8 +28,8 @@ pub enum BinaryOp {
     GreaterEqual,
     Equal,
     NotEqual,
-    And,
-    Or
+    LogicAnd,
+    LogicOr
 }
 
 /// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
