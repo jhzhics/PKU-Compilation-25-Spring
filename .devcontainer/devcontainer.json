@@ -6,7 +6,13 @@
       "dustypomerleau.rust-syntax",
       "fill-labs.dependi",
       "rust-lang.rust-analyzer",
-      "vadimcn.vscode-lldb"]
+      "vadimcn.vscode-lldb",
+      "github.copilot",
+      "github.copilot-chat"]
+    },
+    "containerEnv": {
+      "http_proxy": "http://host.docker.internal:7890",
+      "https_proxy": "http://host.docker.internal:7890"
     }
   }
 }
