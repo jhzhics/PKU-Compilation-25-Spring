@@ -185,7 +185,7 @@ VarDecl: Decl = {
 };
 
 
-Stmt: Stmt = 
+OtherStmt: Stmt = 
 {
   "return" <exp: Exp> ";" => Stmt::Return { exp },
   <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign {
@@ -199,6 +199,86 @@ Stmt: Stmt =
   },
   <option_exp: Exp?> ";" => Stmt::Exp { exp: option_exp },
   <block: Block> => Stmt::Block { block }
+}
+
+WithelseStmt: Stmt = 
+{
+  <other_stmt: OtherStmt> => other_stmt,
+  "if" "(" <cond: Exp> ")" <then_stmt: WithelseStmt> "else" <else_stmt: WithelseStmt> => 
+  {
+    let then_block;
+    let else_block;
+
+    if let Stmt::Block { block } = then_stmt {
+      then_block = block;
+    } else {
+      then_block = Block {
+        block_items: vec![BlockItem::Stmt { stmt: then_stmt }]
+      };
+    }
+    if let Stmt::Block { block } = else_stmt {
+      else_block = block;
+    } else {
+      else_block = Block {
+        block_items: vec![BlockItem::Stmt { stmt: else_stmt }]
+      };
+    }
+
+
+    Stmt::If {
+    cond,
+    then_block: then_block,
+    else_block: Some(else_block)
+    }
+  }
+}
+
+Stmt: Stmt = 
+{
+  <other_stmt: OtherStmt> => other_stmt,
+  "if" "(" <cond: Exp> ")" <then_stmt: Stmt> => {
+    let then_block;
+
+    if let Stmt::Block { block } = then_stmt {
+      then_block = block;
+    } else {
+      then_block = Block {
+        block_items: vec![BlockItem::Stmt { stmt: then_stmt }]
+      };
+    }
+
+    Stmt::If {
+    cond,
+    then_block: then_block,
+    else_block: None
+    }
+  },
+  
+  "if" "(" <cond: Exp> ")" <then_stmt: WithelseStmt> "else" <else_stmt: Stmt> => {
+    let then_block;
+    let else_block;
+
+    if let Stmt::Block { block } = then_stmt {
+      then_block = block;
+    } else {
+      then_block = Block {
+        block_items: vec![BlockItem::Stmt { stmt: then_stmt }]
+      };
+    }
+    if let Stmt::Block { block } = else_stmt {
+      else_block = block;
+    } else {
+      else_block = Block {
+        block_items: vec![BlockItem::Stmt { stmt: else_stmt }]
+      };
+    }
+
+    Stmt::If {
+    cond,
+    then_block: then_block,
+    else_block: Some(else_block)
+    }
+  },
 }
 
 Decl: Decl = {
