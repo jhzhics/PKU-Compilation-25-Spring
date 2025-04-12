@@ -184,6 +184,7 @@ VarDecl: BlockItem = {
   }
 };
 
+
 Stmt: BlockItem = 
 {
   "return" <exp: Exp> ";" => BlockItem::Return { exp },
@@ -195,7 +196,9 @@ Stmt: BlockItem =
       panic!("Expected an identifier")
     }},
     exp
-  }
+  },
+  <option_exp: Exp?> ";" => BlockItem::Exp { exp: option_exp },
+  <block: Block> => BlockItem::Block { block }
 }
 
 Decl: BlockItem = {
