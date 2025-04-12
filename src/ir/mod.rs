@@ -210,6 +210,10 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::BasicBlock, ValueList)
         {
             let values = item.koopa_append(dfg);
             ret_values.extend(values);
+            if let BlockItem::Return {..} = item // Because we are linear IR now. Will be removed in the following tasks
+            {
+                break;
+            }
         }
         (entry, ret_values)
     }
