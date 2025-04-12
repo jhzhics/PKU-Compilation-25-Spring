@@ -52,16 +52,26 @@ pub enum Exp {
     }
 }
 
+#[derive(Debug)]
+pub enum Decl {
+    ConstDecl{btype: ValType, const_defs:Vec<(Ident, Exp)>},
+    VarDecl{btype: ValType, var_defs:Vec<(Ident, Option<Exp>)>}
+}
+
+#[derive(Debug)]
+pub enum Stmt {
+    Return{exp: Exp},
+    Assign{ident: Ident, exp: Exp},
+    Exp{exp: Option<Exp>},
+    Block{block: Block}
+}
+
 ///BlockItem     ::= Decl | Stmt;
 #[derive(Debug)]
 pub enum BlockItem
 {
-    Return{exp: Exp},
-    ConstDecl{btype: ValType, const_defs:Vec<(Ident, Exp)>},
-    VarDecl{btype: ValType, var_defs:Vec<(Ident, Option<Exp>)>},
-    Assign{ident: Ident, exp: Exp},
-    Exp{exp: Option<Exp>},
-    Block{block: Block}
+    Stmt{stmt: Stmt},
+    Decl{decl: Decl}
 }
 
 /// Ident

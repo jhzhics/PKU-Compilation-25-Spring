@@ -158,26 +158,26 @@ VarDef: (Ident, Option<Exp>) = {
   <ident: Ident> => (ident, None)
 };
 
-ConstDecl: BlockItem = {
+ConstDecl: Decl = {
   "const" <btype: BType> <first: ConstDef> <rest: ("," ConstDef)*> ";" => {
     let mut const_defs = vec![first];
     for (_, const_def) in rest {
       const_defs.push(const_def);
     }
-    BlockItem::ConstDecl {
+    Decl::ConstDecl {
       btype,
       const_defs,
     }
   }
 }
 
-VarDecl: BlockItem = {
+VarDecl: Decl = {
   <btype: BType> <first: VarDef> <rest: ("," VarDef)*> ";" => {
     let mut var_defs = vec![first];
     for (_, var_def) in rest {
       var_defs.push(var_def);
     }
-    BlockItem::VarDecl {
+    Decl::VarDecl {
       btype,
       var_defs,
     }
@@ -185,10 +185,10 @@ VarDecl: BlockItem = {
 };
 
 
-Stmt: BlockItem = 
+Stmt: Stmt = 
 {
-  "return" <exp: Exp> ";" => BlockItem::Return { exp },
-  <lval: LVal> "=" <exp: Exp> ";" => BlockItem::Assign {
+  "return" <exp: Exp> ";" => Stmt::Return { exp },
+  <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign {
     ident:
     {if let Exp::Ident { ident } = lval {
       ident
@@ -197,19 +197,19 @@ Stmt: BlockItem =
     }},
     exp
   },
-  <option_exp: Exp?> ";" => BlockItem::Exp { exp: option_exp },
-  <block: Block> => BlockItem::Block { block }
+  <option_exp: Exp?> ";" => Stmt::Exp { exp: option_exp },
+  <block: Block> => Stmt::Block { block }
 }
 
-Decl: BlockItem = {
+Decl: Decl = {
   <const_decl: ConstDecl> => const_decl,
   <var_decl: VarDecl> => var_decl
 };
 
 
 BlockItem: BlockItem = {
-  <decl: Decl> => decl,
-  <stmt: Stmt> => stmt
+  <decl: Decl> => BlockItem::Decl { decl },
+  <stmt: Stmt> => BlockItem::Stmt { stmt },
 };
 
 Block: Block = {

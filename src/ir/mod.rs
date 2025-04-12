@@ -147,15 +147,10 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::Value, ValueList)> for
     }
 }
 
-impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for BlockItem {
-    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> ValueList {
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for Decl {
+    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> LinkedList<koopa_ir::Value> {
         match self {
-            BlockItem::Return { exp } => {
-                let (value, mut value_list) = exp.koopa_append(dfg);
-                value_list.push_back(dfg.new_value().ret(Some(value)));
-                value_list
-            },
-            BlockItem::ConstDecl { btype, const_defs } =>
+            Decl::ConstDecl { btype, const_defs } =>
             {
                 assert!(btype.clone() == ValType::Int);
                 const_defs.iter().for_each(|(ident, exp)|
@@ -166,7 +161,7 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for 
                 });
                 ValueList::new()
             },
-            BlockItem::VarDecl { btype, var_defs } =>
+            Decl::VarDecl { btype, var_defs } =>
             {
                 assert!(btype.clone() == ValType::Int);
                 let mut value_list = ValueList::new();
@@ -185,8 +180,21 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for 
                     }
                 });
                 value_list
+            }
+        }
+    }
+}
+
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for Stmt
+{
+    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> ValueList {
+        match self {
+            Stmt::Return { exp } => {
+                let (value, mut value_list) = exp.koopa_append(dfg);
+                value_list.push_back(dfg.new_value().ret(Some(value)));
+                value_list
             },
-            BlockItem::Assign { ident, exp } =>
+            Stmt::Assign { ident, exp } =>
             {
                 let mut value_list = ValueList::new();
                 let (var, constant) = symtable::get(&ident.name).expect("Assign a variable before declared");
@@ -198,8 +206,17 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for 
                 );  
                 value_list
             },
-            BlockItem::Exp {exp} => ValueList::new(),
-            BlockItem::Block { block } => block.koopa_append(dfg)
+            Stmt::Exp {exp} => ValueList::new(),
+            Stmt::Block { block } => block.koopa_append(dfg)
+        }
+    }
+}
+
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for BlockItem {
+    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> ValueList {
+        match self {
+            BlockItem::Decl { decl } => decl.koopa_append(dfg),
+            BlockItem::Stmt { stmt } => stmt.koopa_append(dfg)
         }
     }
 }
