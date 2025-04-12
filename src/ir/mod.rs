@@ -2,7 +2,7 @@ mod symtable;
 use super::ast::{*};
 
 use std::collections::LinkedList;
-use koopa::ir::{builder_traits::*, Value};
+use koopa::ir::{builder_traits::*, Value, ValueKind};
 use koopa::ir as koopa_ir;
 
 pub fn build_koopa(ast: CompUnit) -> koopa_ir::Program {
@@ -212,7 +212,10 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, ValueList> for Block {
         {
             let values = item.koopa_append(dfg);
             ret_values.extend(values);
-            if let BlockItem::Return {..} = item // Because we are linear IR now. Will be removed in the following tasks
+            if ret_values.is_empty() {
+                continue
+            };
+            if let ValueKind::Return(_) = dfg.value(ret_values.back().unwrap().clone()).kind()
             {
                 break;
             }
