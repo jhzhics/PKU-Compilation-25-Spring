@@ -199,15 +199,14 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, LinkedList<koopa_ir::Value>> for 
                 value_list
             },
             BlockItem::Exp {exp} => ValueList::new(),
-            BlockItem::Block { block } => block.koopa_append(dfg).1
+            BlockItem::Block { block } => block.koopa_append(dfg)
         }
     }
 }
 
-impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::BasicBlock, ValueList)> for Block {
-    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> (koopa_ir::BasicBlock, ValueList) {
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, ValueList> for Block {
+    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph) -> ValueList {
         symtable::push_scope();
-        let entry = dfg.new_bb().basic_block(None);
         let mut ret_values = ValueList::new();
         for item in &self.block_items
         {
@@ -219,7 +218,7 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, (koopa_ir::BasicBlock, ValueList)
             }
         }
         symtable::pop_scope();
-        (entry, ret_values)
+        ret_values
     }
 }
 
@@ -232,8 +231,8 @@ impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
         ));
         let func_data = program.func_mut(func);
         let dfg = func_data.dfg_mut();
-
-        let (entry, values) = self.block.koopa_append(dfg);
+        let entry = dfg.new_bb().basic_block(Some("@entry".to_string()));
+        let values = self.block.koopa_append(dfg);
         func_data.layout_mut().bbs_mut().extend([entry]);
         func_data
             .layout_mut()
