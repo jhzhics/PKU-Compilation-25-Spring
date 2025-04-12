@@ -253,11 +253,19 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
                     }
                     BinaryOp::NotEq =>
                     {
-                        if lhs != "x0" && rhs != "x0"
+                        if lhs == "x0"
+                        {
+                            asm.push_back(format!("snez {}, {}", reg, rhs));
+                        }
+                        else if rhs == "x0"
+                        {
+                            asm.push_back(format!("snez {}, {}", reg, lhs));
+                        }
+                        else
                         {
                             asm.push_back(format!("xor {}, {}, {}", reg, lhs, rhs));
                         }
-                        asm.push_back(format!("snez {}, {}", reg, reg));
+
                     },
                     BinaryOp::And =>
                     {
