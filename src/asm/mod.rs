@@ -1,5 +1,5 @@
 mod backend;
-use koopa::ir::{dfg::DataFlowGraph, *};
+use koopa::{back, ir::{dfg::DataFlowGraph, *}};
 use std::{collections::{ HashMap, LinkedList }, fmt::format};
 
 pub fn compile(prog: Program) -> String {
@@ -79,9 +79,9 @@ impl GenerateAsm for FunctionData {
         };
         asm.push_back(format!("{}:", name));
 
-
-
+        // Preprocess
         for (&bb, node) in self.layout().bbs() {
+            backend::alloc_label(&bb);
             node.insts().iter().for_each(|(&value, _)|
             {
                 let value_date = self.dfg().value(value);
@@ -90,22 +90,27 @@ impl GenerateAsm for FunctionData {
                     func_state.allocate(value);
                 }
             });
+        }
 
-            // Prelogue
-            let stack_size = func_state.get_stackframe_size() as i32;
-            if stack_size <= 2048
-            {
-                asm.push_back(format!("addi sp, sp, {}", -stack_size));
-            }
-            else
-            {
-                asm.push_back(format!("li t0, {}", -stack_size));
-                asm.push_back("add sp, sp, t0".to_string());   
-            }
+        // Prelogue
+        let stack_size = func_state.get_stackframe_size() as i32;
+        if stack_size <= 2048
+        {
+            asm.push_back(format!("addi sp, sp, {}", -stack_size));
+        }
+        else
+        {
+            asm.push_back(format!("li t0, {}", -stack_size));
+            asm.push_back("add sp, sp, t0".to_string());   
+        }
 
+        for (&bb, node) in self.layout().bbs() {
+            asm.push_back(format!("{}:", backend::get_label(&bb).expect("The label is not allocated")));
             for &inst in node.insts().keys() {
                 inst.generate_ins(asm, &func_state);
             }
+
+            asm.push_back("".to_string());
         }
     }
 }
@@ -304,7 +309,22 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
 
             ValueKind::Alloc(_) => (),
 
-            other => panic!("Not Implemented for value type {:#?}", other),
+            ValueKind::Jump(ins) =>
+            {
+                let label = backend::get_label(&ins.target()).expect("The label is not allocated");
+                asm.push_back(format!("j {}", label));
+            },
+
+            ValueKind::Branch(ins) =>
+            {
+                let cond = ins.cond().get_load_reg(asm, func_state);
+                let true_label = backend::get_label(&ins.true_bb()).expect("The label is not allocated");
+                let false_label = backend::get_label(&ins.false_bb()).expect("The label is not allocated");
+                asm.push_back(format!("bnez {}, {}", cond, true_label));
+                asm.push_back(format!("j {}", false_label));
+            },
+
+            other => panic!("Not Implemented for value type {:#?}", other)
         }
     }
 }
