@@ -7,7 +7,8 @@ lazy_static! {
     static ref GLOBAL_REG_MAP: Mutex<HashMap<Value, String>> = Mutex::new(HashMap::new());
     
     static ref REG_POOL: Mutex<VecDeque<String>> = Mutex::new(VecDeque::from(vec![
-        "t0".to_string(), "t1".to_string(), "t2".to_string(), "t3".to_string(),
+        // "t0".to_string(),  //t0 is reserved for temporary values
+        "t1".to_string(), "t2".to_string(), "t3".to_string(),
         "t4".to_string(), "t5".to_string(), "t6".to_string(), "a0".to_string(),
         "a1".to_string(), "a2".to_string(), "a3".to_string(), "a4".to_string(),
         "a5".to_string(), "a6".to_string(), "a7".to_string()

@@ -65,6 +65,32 @@ impl<'a> FunctionState<'a> {
     }
 }
 
+fn store_word(asm: &mut LinkedList<String>, reg: &str, offset: i32) {
+    if offset >= GLOB_MIN_OFFSET && offset <= GLOB_MAX_OFFSET
+    {
+        asm.push_back(format!("sw {}, {}(sp)", reg, offset));
+    }
+    else
+    {
+
+        asm.push_back(format!("li t0, {}", offset));
+        asm.push_back(format!("add t0, t0, sp"));
+        asm.push_back(format!("sw {}, 0(t0)", reg));
+    }
+}
+
+fn load_word(asm: &mut LinkedList<String>, reg: &str, offset: i32) {
+    if offset >= GLOB_MIN_OFFSET && offset <= GLOB_MAX_OFFSET
+    {
+        asm.push_back(format!("lw {}, {}(sp)", reg, offset));
+    }
+    else
+    {
+        asm.push_back(format!("li t0, {}", offset));
+        asm.push_back(format!("add t0, t0, sp"));
+        asm.push_back(format!("lw {}, 0(t0)", reg));
+    }
+}
 
 impl GenerateAsm for FunctionData {
     fn generate_asm(&self, asm: &mut LinkedList<String>) {
@@ -97,7 +123,7 @@ impl GenerateAsm for FunctionData {
 
         // Prelogue
         let stack_size = func_state.get_stackframe_size() as i32;
-        if stack_size <= 2048
+        if -stack_size >= GLOB_MIN_OFFSET
         {
             asm.push_back(format!("addi sp, sp, {}", -stack_size));
         }
@@ -127,15 +153,7 @@ impl<'a> InstReg<FunctionState<'a>> for Value {
             let reg = backend::alloc_ins_reg(self);
             let offset = func_state.get_offset(self.clone());
 
-            if offset < GLOB_MAX_OFFSET // offset >= 0
-            {
-                asm.push_back(format!("lw {}, {}(sp)", reg, offset));
-            }
-            else
-            {
-                asm.push_back(format!("li {}, {}", reg, offset));
-                asm.push_back(format!("add {}, {}, sp", reg, reg));
-            }
+            load_word(asm, reg.as_str(), offset);
             reg
         };
         match value_data.kind() {
@@ -296,7 +314,8 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
                     other => panic!("Not implement binary op {:#?}", other)
                 }
                 
-                asm.push_back(format!("sw {}, {}(sp)", reg, func_state.get_offset(self.clone())));
+                let offset = func_state.get_offset(self.clone());
+                store_word(asm, reg.as_str(), offset);
 
                 ins.lhs().remove_reg(asm, func_state);
                 ins.rhs().remove_reg(asm, func_state);
@@ -308,7 +327,7 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
                 let value = ins.value();
                 let value_reg = value.get_load_reg(asm, func_state);
                 let offset = func_state.get_offset(ins.dest());
-                asm.push_back(format!("sw {}, {}(sp)", value_reg, offset));
+                store_word(asm, value_reg.as_str(), offset);
                 value.remove_reg(asm, func_state);
             },
 
@@ -316,7 +335,7 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
             {
                 let reg = ins.src().get_load_reg(asm, func_state);
                 let offset = func_state.get_offset(self.clone());
-                asm.push_back(format!("sw {}, {}(sp)", reg, offset));
+                store_word(asm, reg.as_str(), offset);
                 ins.src().remove_reg(asm, func_state);
             }
 
