@@ -183,7 +183,9 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                         state.ints_list.push_back(if_value);
                         state.set_current_bb(then_bb, func_data);
                         let rhs_value = rhs.koopa_append(func_data, context, state);
-                        let store_value = func_data.dfg_mut().new_value().store(rhs_value, result);
+                        let bool_rhs = func_data.dfg_mut().new_value().binary(koopa_ir::BinaryOp::NotEq, rhs_value, zero);
+                        state.ints_list.push_back(bool_rhs);
+                        let store_value = func_data.dfg_mut().new_value().store(bool_rhs, result);
                         let jump_value = func_data.dfg_mut().new_value().jump(next_bb);
                         state.ints_list.extend([store_value, jump_value]);
                         state.set_current_bb(next_bb, func_data);
@@ -203,7 +205,9 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                         state.ints_list.push_back(if_value);
                         state.set_current_bb(then_bb, func_data);
                         let rhs_value = rhs.koopa_append(func_data, context, state);
-                        let store_value = func_data.dfg_mut().new_value().store(rhs_value, result);
+                        let bool_rhs = func_data.dfg_mut().new_value().binary(koopa_ir::BinaryOp::NotEq, rhs_value, zero);
+                        state.ints_list.push_back(bool_rhs);
+                        let store_value = func_data.dfg_mut().new_value().store(bool_rhs, result);
                         let jump_value = func_data.dfg_mut().new_value().jump(next_bb);
                         state.ints_list.extend([store_value, jump_value]);
                         state.set_current_bb(next_bb, func_data);
