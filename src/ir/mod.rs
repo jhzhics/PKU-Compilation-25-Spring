@@ -363,9 +363,17 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
        
         if !jump_end
         {
-            assert!(context.next_bb.is_some(), "Basic Block must end with br/jump/return");
-            let jmp_value = func_data.dfg_mut().new_value().jump(context.next_bb.unwrap());
-            state.ints_list.push_back(jmp_value);
+            if let next_bb = context.next_bb
+            {
+                let jmp_value = func_data.dfg_mut().new_value().jump(context.next_bb.unwrap());
+                state.ints_list.push_back(jmp_value);
+            }
+            else 
+            {
+                let defalut_return = Stmt::Return { exp: Exp::Number { value: Number { value: 0 } } };
+                defalut_return.koopa_append(func_data,IRContext::default(), state);
+            }
+            jump_end = true;
         }
     }
 }
