@@ -198,7 +198,7 @@ OtherStmt: Stmt =
     exp
   },
   <option_exp: Exp?> ";" => Stmt::Exp { exp: option_exp },
-  <block: Block> => Stmt::Block { block }
+  <block: Block> => Stmt::Block { block },
 }
 
 WithelseStmt: Stmt = 
@@ -224,11 +224,26 @@ WithelseStmt: Stmt =
       };
     }
 
-
     Stmt::If {
     cond,
     then_block: then_block,
     else_block: Some(else_block)
+    }
+  },
+  "while" "(" <cond: Exp> ")" <stmt: WithelseStmt> => 
+  {
+    if let Stmt::Block { block } = stmt {
+      Stmt::While {
+        cond,
+        block
+      }
+    } else {
+      Stmt::While {
+        cond,
+        block: Block {
+          block_items: vec![BlockItem::Stmt { stmt }]
+        }
+      }
     }
   }
 }
@@ -279,6 +294,23 @@ Stmt: Stmt =
     else_block: Some(else_block)
     }
   },
+
+  "while" "(" <cond: Exp> ")" <stmt: Stmt> => 
+  {
+    if let Stmt::Block { block } = stmt {
+      Stmt::While {
+        cond,
+        block
+      }
+    } else {
+      Stmt::While {
+        cond,
+        block: Block {
+          block_items: vec![BlockItem::Stmt { stmt }]
+        }
+      }
+    }
+  }
 }
 
 Decl: Decl = {

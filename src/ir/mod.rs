@@ -305,6 +305,24 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 state.set_current_bb(then_bb, func_data);
                 then_stmt.koopa_append(func_data, context, state);
             },
+            Stmt::While { cond, block: stmt } =>
+            {
+                let cond_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                let body_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                func_data.layout_mut().bbs_mut().extend([cond_bb, body_bb, next_bb]);
+                state.ints_list.push_back(
+                    func_data.dfg_mut().new_value().jump(cond_bb)
+                );
+                state.set_current_bb(cond_bb, func_data);
+                let cond_value = cond.koopa_append(func_data, IRContext { next_bb: Some(next_bb) }, state);
+                state.ints_list.push_back(
+                func_data.dfg_mut().new_value().branch(cond_value, body_bb, next_bb)
+                );
+                state.set_current_bb(body_bb, func_data);
+                stmt.koopa_append(func_data, IRContext { next_bb: Some(cond_bb) }, state);
+                state.set_current_bb(next_bb, func_data);
+            }
             Stmt::Block { .. } => panic!("This never happens.")
         }
     }

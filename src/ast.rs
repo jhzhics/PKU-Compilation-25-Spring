@@ -64,7 +64,8 @@ pub enum Stmt {
     Assign{ident: Ident, exp: Exp},
     Exp{exp: Option<Exp>},
     Block{block: Block},
-    If{cond: Exp, then_block: Block, else_block: Option<Block>}
+    If{cond: Exp, then_block: Block, else_block: Option<Block>},
+    While{cond: Exp, block: Block},
 }
 
 ///BlockItem     ::= Decl | Stmt;
