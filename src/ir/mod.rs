@@ -307,7 +307,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 state.set_current_bb(then_bb, func_data);
                 then_stmt.koopa_append(func_data, context, state);
             },
-            Stmt::While { cond, block: stmt } =>
+            Stmt::While { cond, block } =>
             {
                 let cond_bb = func_data.dfg_mut().new_bb().basic_block(None);
                 let body_bb = func_data.dfg_mut().new_bb().basic_block(None);
@@ -322,7 +322,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 func_data.dfg_mut().new_value().branch(cond_value, body_bb, next_bb)
                 );
                 state.set_current_bb(body_bb, func_data);
-                stmt.koopa_append(func_data, IRContext { next_bb: Some(cond_bb), out_bb: Some(next_bb) }, state);
+                block.koopa_append(func_data, IRContext { next_bb: Some(cond_bb), out_bb: Some(next_bb) }, state);
                 state.set_current_bb(next_bb, func_data);
             },
             Stmt::Break =>
@@ -331,9 +331,6 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 state.ints_list.push_back(
                     func_data.dfg_mut().new_value().jump(out_bb)
                 );
-                let left_bb = func_data.dfg_mut().new_bb().basic_block(None);
-                func_data.layout_mut().bbs_mut().extend([left_bb]);
-                state.set_current_bb(left_bb, func_data);
             }
             Stmt::Continue =>
             {
@@ -341,9 +338,6 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 state.ints_list.push_back(
                     func_data.dfg_mut().new_value().jump(cond_bb)
                 );
-                let left_bb = func_data.dfg_mut().new_bb().basic_block(None);
-                func_data.layout_mut().bbs_mut().extend([left_bb]);
-                state.set_current_bb(left_bb, func_data);
             }
             Stmt::Block { .. } => panic!("This never happens.")
         }
@@ -371,7 +365,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
             match item {
                 BlockItem::Stmt {stmt: Stmt::Return {..}} =>
                 {
-                    item.koopa_append(func_data,IRContext::default(), state);
+                    item.koopa_append(func_data, context, state);
                     jump_end = true;
                     break;
                 },
@@ -395,8 +389,12 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
                     IRContext { next_bb: Some(next_bb), ..context }, state);
                     state.set_current_bb(next_bb, func_data);
                     continue;
-                }
-                ,
+                },
+                BlockItem::Stmt { stmt: Stmt::Break } | BlockItem::Stmt { stmt: Stmt::Continue } => {
+                    item.koopa_append(func_data, context, state);
+                    jump_end = true;
+                    break;  // Stop processing further items after break/continue
+                },
                 _ =>
                 {
                     item.koopa_append(func_data, 
@@ -416,7 +414,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
             else 
             {
                 let defalut_return = Stmt::Return { exp: Exp::Number { value: Number { value: 0 } } };
-                defalut_return.koopa_append(func_data,IRContext::default(), state);
+                defalut_return.koopa_append(func_data, context, state);
             }
         }
 
