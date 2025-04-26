@@ -197,6 +197,8 @@ OtherStmt: Stmt =
     }},
     exp
   },
+  "break" ";" => Stmt::Break,
+  "continue" ";" => Stmt::Continue,
   <option_exp: Exp?> ";" => Stmt::Exp { exp: option_exp },
   <block: Block> => Stmt::Block { block },
 }

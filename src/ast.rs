@@ -66,6 +66,8 @@ pub enum Stmt {
     Block{block: Block},
     If{cond: Exp, then_block: Block, else_block: Option<Block>},
     While{cond: Exp, block: Block},
+    Break,
+    Continue
 }
 
 ///BlockItem     ::= Decl | Stmt;
