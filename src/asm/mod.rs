@@ -2,6 +2,9 @@ mod backend;
 use koopa::{back, ir::{dfg::DataFlowGraph, *}};
 use std::{collections::{ HashMap, LinkedList }, fmt::format};
 
+static GLOB_MAX_OFFSET: i32 = (1 << 11) - 1;
+static GLOB_MIN_OFFSET: i32 = -(1 << 11);
+
 pub fn compile(prog: Program) -> String {
     let mut inst_list = LinkedList::<String>::new();
     prog.generate_asm(&mut inst_list);
@@ -120,11 +123,11 @@ impl<'a> InstReg<FunctionState<'a>> for Value {
         let dfg = func_state.dfg;
         let value_data = dfg.value(*self);
         let default_getreg = |asm: &mut LinkedList<String>| {
-            static MAX_OFFSET: i32 = 1 << 12;
+
             let reg = backend::alloc_ins_reg(self);
             let offset = func_state.get_offset(self.clone());
 
-            if offset < MAX_OFFSET
+            if offset < GLOB_MAX_OFFSET // offset >= 0
             {
                 asm.push_back(format!("lw {}, {}(sp)", reg, offset));
             }
@@ -185,7 +188,7 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
                 // Epilogue
                 let epilogue = |stack_size: i32| ->LinkedList<String> {
                     let mut linked_list = LinkedList::<String>::new();
-                    if stack_size < 2048
+                    if stack_size <= GLOB_MAX_OFFSET
                     {
                         linked_list.push_back(format!("addi sp, sp, {}", stack_size));
                     }
