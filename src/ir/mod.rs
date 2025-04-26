@@ -15,7 +15,9 @@ struct IRContext
 {
     pub next_bb: Option<BasicBlock>,
     //The basic block outside the loop(if any)
-    pub out_bb: Option<koopa_ir::BasicBlock>
+    pub out_bb: Option<koopa_ir::BasicBlock>,
+    //The cond basic block for loop(if any)
+    pub cond_bb: Option<koopa_ir::BasicBlock>
 }
 
 struct IRState {
@@ -25,7 +27,7 @@ struct IRState {
 
 impl Default for IRContext {
     fn default() -> Self {
-        IRContext { next_bb: None, out_bb: None }
+        IRContext { next_bb: None, out_bb: None, cond_bb: None }
     }
 }
 
@@ -322,7 +324,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 func_data.dfg_mut().new_value().branch(cond_value, body_bb, next_bb)
                 );
                 state.set_current_bb(body_bb, func_data);
-                block.koopa_append(func_data, IRContext { next_bb: Some(cond_bb), out_bb: Some(next_bb) }, state);
+                block.koopa_append(func_data, IRContext { next_bb: Some(cond_bb), out_bb: Some(next_bb), cond_bb: Some(cond_bb) }, state);
                 state.set_current_bb(next_bb, func_data);
             },
             Stmt::Break =>
@@ -334,7 +336,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
             }
             Stmt::Continue =>
             {
-                let cond_bb = context.next_bb.expect("Continue out of loop");
+                let cond_bb = context.cond_bb.expect("Continue out of loop");
                 state.ints_list.push_back(
                     func_data.dfg_mut().new_value().jump(cond_bb)
                 );
