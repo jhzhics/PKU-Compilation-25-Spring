@@ -321,6 +321,7 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
                 let true_label = backend::get_label(&ins.true_bb()).expect("The label is not allocated");
                 let false_label = backend::get_label(&ins.false_bb()).expect("The label is not allocated");
                 asm.push_back(format!("bnez {}, {}", cond, true_label));
+                ins.cond().remove_reg(asm, func_state);
                 asm.push_back(format!("j {}", false_label));
             },
 

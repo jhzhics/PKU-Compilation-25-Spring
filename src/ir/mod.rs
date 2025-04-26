@@ -3,7 +3,7 @@ use super::ast::{*};
 
 use std::collections::LinkedList;
 use std::mem;
-use koopa::ir::{builder_traits::*, dfg, BasicBlock, Value, ValueKind};
+use koopa::ir::{builder_traits::*, dfg, BasicBlock, Type, Value, ValueKind};
 use koopa::ir as koopa_ir;
 
 
@@ -130,74 +130,102 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Ident {
     }
 }
 
-impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Exp {
+impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
 
     /// # Returns
     /// (Value, ValueList)
     /// - `Value` is the value for Exp itself
     /// - `ValueList` contains values to be added to insts
-    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph, context: IRContext, state: &mut IRState)
+    fn koopa_append(&self, func_data: &mut koopa_ir::FunctionData, context: IRContext, state: &mut IRState)
      -> koopa_ir::Value {
         match self {
-            Exp::Number{value} => value.koopa_append(dfg, context, state),
-            Exp::Ident { ident} => ident.koopa_append(dfg, context, state),
-            Exp::UnaryExp{unary_op : UnaryOp::Plus, exp} => exp.koopa_append(dfg, context, state),
+            Exp::Number{value} => value.koopa_append(func_data.dfg_mut(), context, state),
+            Exp::Ident { ident} => ident.koopa_append(func_data.dfg_mut(), context, state),
+            Exp::UnaryExp{unary_op : UnaryOp::Plus, exp} => exp.koopa_append(func_data, context, state),
             Exp::UnaryExp{unary_op, exp} => {
-                let value = exp.koopa_append(dfg, context, state);
-                let zero = dfg.new_value().integer(0);
-                let value = dfg.new_value().binary(unary_op.into(), zero, value);
+                let value = exp.koopa_append(func_data, context, state);
+                let zero = func_data.dfg_mut().new_value().integer(0);
+                let value = func_data.dfg_mut().new_value().binary(unary_op.into(), zero, value);
                 state.ints_list.push_back(value);
                 value
             }
             Exp::BinaryExp { binary_op, lhs, rhs } =>
             {
-                let lhs_value = lhs.koopa_append(dfg, context, state);
-                let rhs_value = rhs.koopa_append(dfg, context, state);
+
                 let koopa_binary_op: Result<koopa_ir::BinaryOp, _> = binary_op.try_into();
-                let value;
+
+                // Process binary operations that can be mapped to koopa IR directly
                 if let Ok(binary_op) = koopa_binary_op
                 {
-                    value = dfg.new_value().binary(binary_op, lhs_value, rhs_value);
+                    let lhs_value = lhs.koopa_append(func_data, context, state);
+                    let rhs_value = rhs.koopa_append(func_data, context, state);
+                    let value = func_data.dfg_mut().new_value().binary(binary_op, lhs_value, rhs_value);
                     state.ints_list.push_back(value);
+                    return value;
                 }
-                else {
-                    match &binary_op {
-                        BinaryOp::LogicAnd =>
-                        {   
-                            let zero = dfg.new_value().integer(0);
-                            let l = dfg.new_value().binary(koopa_ir::BinaryOp::NotEq,
-                                zero, lhs_value);
-                            let r = dfg.new_value().binary(koopa_ir::BinaryOp::NotEq,
-                                zero, rhs_value);
-                            value = dfg.new_value().binary(koopa_ir::BinaryOp::And,
-                                l, r);
-                            state.ints_list.extend([l, r, value]);
-                        },
-                        BinaryOp::LogicOr =>
-                        {
-                            let zero = dfg.new_value().integer(0);
-                            let or = dfg.new_value().binary(koopa_ir::BinaryOp::Or,
-                                lhs_value, rhs_value);
-                            value = dfg.new_value().binary(koopa_ir::BinaryOp::NotEq,
-                                zero, or);
-                            state.ints_list.extend([or, value]);
-                        },
-                        _ => panic!("Binary Op Not expected")
-                    };
-                }
+
+                // Process short-circuit evaluation binary operations
+                let value;
+                let result = func_data.dfg_mut().new_value().alloc(Type::get_i32());
+                state.ints_list.push_back(result);
+                let lhs_value = lhs.koopa_append(func_data, context, state);
                 
+                match &binary_op {
+                    BinaryOp::LogicAnd =>
+                    {
+                        let zero = func_data.dfg_mut().new_value().integer(0);
+                        let store_zero = func_data.dfg_mut().new_value().store(zero, result);
+                        state.ints_list.push_back(store_zero);
+                        let then_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                        let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                        func_data.layout_mut().bbs_mut().extend([then_bb, next_bb]);
+                        let if_value = func_data.dfg_mut().new_value().branch(lhs_value, then_bb, next_bb);
+                        state.ints_list.push_back(if_value);
+                        state.set_current_bb(then_bb, func_data);
+                        let rhs_value = rhs.koopa_append(func_data, context, state);
+                        let store_value = func_data.dfg_mut().new_value().store(rhs_value, result);
+                        let jump_value = func_data.dfg_mut().new_value().jump(next_bb);
+                        state.ints_list.extend([store_value, jump_value]);
+                        state.set_current_bb(next_bb, func_data);
+                    },
+                    BinaryOp::LogicOr =>
+                    {
+                        let one = func_data.dfg_mut().new_value().integer(1);
+                        let zero = func_data.dfg_mut().new_value().integer(0);
+                        let store_one = func_data.dfg_mut().new_value().store(one, result);
+                        state.ints_list.push_back(store_one);
+                        let then_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                        let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                        func_data.layout_mut().bbs_mut().extend([then_bb, next_bb]);
+                        let cond = func_data.dfg_mut().new_value().binary(koopa_ir::BinaryOp::Eq, lhs_value, zero);
+                        state.ints_list.push_back(cond);
+                        let if_value = func_data.dfg_mut().new_value().branch(cond, then_bb, next_bb);
+                        state.ints_list.push_back(if_value);
+                        state.set_current_bb(then_bb, func_data);
+                        let rhs_value = rhs.koopa_append(func_data, context, state);
+                        let store_value = func_data.dfg_mut().new_value().store(rhs_value, result);
+                        let jump_value = func_data.dfg_mut().new_value().jump(next_bb);
+                        state.ints_list.extend([store_value, jump_value]);
+                        state.set_current_bb(next_bb, func_data);
+                    },
+                    _ => panic!("Binary Op Not expected")
+                };
+                
+                value = func_data.dfg_mut().new_value().load(result);
+                state.ints_list.push_back(value);
                 value
             }
         }
     }
 }
 
-impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, ()> for Decl {
-    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph, context: IRContext, state: &mut IRState)
+impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
+    fn koopa_append(&self, func_data: &mut koopa_ir::FunctionData, context: IRContext, state: &mut IRState)
     -> () {
         match self {
             Decl::ConstDecl { btype, const_defs } =>
             {
+                let dfg = func_data.dfg_mut();
                 assert!(btype.clone() == ValType::Int);
                 const_defs.iter().for_each(|(ident, exp)|
                 {
@@ -211,14 +239,14 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, ()> for Decl {
                 assert!(btype.clone() == ValType::Int);
                 var_defs.iter().for_each(|(ident, exp)|
                 {
-                    let var = dfg.new_value().alloc(btype.into());
+                    let var = func_data.dfg_mut().new_value().alloc(btype.into());
                     symtable::insert(ident.name.as_str(), var, None);
                     state.ints_list.push_back(var);
                     if let Some(exp) = exp
                     {
-                        let val  = exp.koopa_append(dfg, context, state);
+                        let val  = exp.koopa_append(func_data, context, state);
                         state.ints_list.push_back(
-                            dfg.new_value().store(val, var)
+                            func_data.dfg_mut().new_value().store(val, var)
                         );
                     }
                 });
@@ -233,16 +261,16 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
     -> () {
         match self {
             Stmt::Return { exp } => {
+                let value = exp.koopa_append(func_data, context, state);
                 let dfg = func_data.dfg_mut();
-                let value = exp.koopa_append(dfg, context, state);
                 state.ints_list.push_back(dfg.new_value().ret(Some(value)));
             },
             Stmt::Assign { ident, exp } =>
             {
-                let dfg = func_data.dfg_mut();
                 let (var, constant) = symtable::get(&ident.name).expect("Assign a variable before declared");
                 assert!(constant.is_none(), "Try to assign a constant");
-                let val  = exp.koopa_append(dfg, context, state);
+                let val  = exp.koopa_append(func_data, context, state);
+                let dfg = func_data.dfg_mut();
                 state.ints_list.push_back(
                     dfg.new_value().store(val, var)
                 );  
@@ -250,7 +278,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
             Stmt::Exp {exp} => (),
             Stmt::If { cond, then_block: then_stmt, else_block: else_stmt } =>
             {
-                let cond_value= cond.koopa_append(func_data.dfg_mut(), context, state);
+                let cond_value= cond.koopa_append(func_data, context, state);
                 let then_bb = func_data.dfg_mut().new_bb().basic_block(None);
                 func_data.layout_mut().bbs_mut().extend([then_bb]);
                 if let Some(else_stmt) = else_stmt
@@ -281,7 +309,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for BlockItem {
     fn koopa_append(&self, func_data: &mut koopa_ir::FunctionData, context: IRContext, state: &mut IRState)
      -> () {
         match self {
-            BlockItem::Decl { decl } => decl.koopa_append(func_data.dfg_mut(), context, state),
+            BlockItem::Decl { decl } => decl.koopa_append(func_data, context, state),
             BlockItem::Stmt { stmt } => stmt.koopa_append(func_data, context, state)
         }
     }
