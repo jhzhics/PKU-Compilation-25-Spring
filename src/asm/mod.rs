@@ -120,9 +120,19 @@ impl<'a> InstReg<FunctionState<'a>> for Value {
         let dfg = func_state.dfg;
         let value_data = dfg.value(*self);
         let default_getreg = |asm: &mut LinkedList<String>| {
+            static MAX_OFFSET: i32 = 1 << 12;
             let reg = backend::alloc_ins_reg(self);
             let offset = func_state.get_offset(self.clone());
-            asm.push_back(format!("lw {}, {}(sp)", reg, offset));
+
+            if offset < MAX_OFFSET
+            {
+                asm.push_back(format!("lw {}, {}(sp)", reg, offset));
+            }
+            else
+            {
+                asm.push_back(format!("li {}, {}", reg, offset));
+                asm.push_back(format!("add {}, {}, sp", reg, reg));
+            }
             reg
         };
         match value_data.kind() {
