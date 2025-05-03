@@ -122,8 +122,3 @@ pub struct CompUnit {
     pub func_defs: Vec<FuncDef>,
     pub decls: Vec<Decl>,
 }
-#[derive(Debug)]
-enum CompUnitElement {
-    Decl(Decl),
-    FuncDef(FuncDef),
-}

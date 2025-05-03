@@ -4,8 +4,15 @@ use koopa::ir::{Value, Function};
 use lazy_static::lazy_static;
 
 #[derive(Debug, Clone, Copy)]
+pub enum VarSymbol
+{
+    Variable(Value),
+    Constant(i32),
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum SymValue {
-    Value(Value, Option<i32>),
+    VarSymbol(VarSymbol),
     Function(Function),
 }
 struct Entry
