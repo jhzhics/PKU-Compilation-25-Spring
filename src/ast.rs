@@ -73,7 +73,7 @@ pub enum Stmt {
     While{cond: Exp, block: Block},
     Break,
     Continue
-}
+} 
 
 ///BlockItem     ::= Decl | Stmt;
 #[derive(Debug)]
@@ -127,4 +127,10 @@ pub struct FuncDef {
 #[derive(Debug)]
 pub struct CompUnit {
     pub func_defs: Vec<FuncDef>,
+    pub decls: Vec<Decl>,
+}
+#[derive(Debug)]
+enum CompUnitElement {
+    Decl(Decl),
+    FuncDef(FuncDef),
 }

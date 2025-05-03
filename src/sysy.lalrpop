@@ -388,12 +388,31 @@ FuncDef: FuncDef = {
     }
   }
 }
-pub CompUnit: CompUnit = <func_def: FuncDef> <rest: FuncDef*> => {
-  let mut func_defs = vec![func_def];
-  for func_def in rest {
+
+pub CompUnit: CompUnit =
+{
+  <Decl: Decl> => CompUnit {
+    func_defs: vec![],
+    decls: vec![Decl]
+  },
+  <func_def: FuncDef> => CompUnit {
+    func_defs: vec![func_def],
+    decls: vec![]
+  },
+  <comp_unit: CompUnit> <decl: Decl> => {
+    let mut decls = comp_unit.decls;
+    decls.push(decl);
+    CompUnit {
+      func_defs: comp_unit.func_defs,
+      decls
+    }
+  },
+  <comp_unit: CompUnit> <func_def: FuncDef> => {
+    let mut func_defs = comp_unit.func_defs;
     func_defs.push(func_def);
+    CompUnit {
+      func_defs,
+      decls: comp_unit.decls
+    }
   }
-  CompUnit {
-    func_defs
-  }
-};
+}
