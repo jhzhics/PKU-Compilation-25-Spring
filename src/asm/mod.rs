@@ -1,13 +1,17 @@
 mod backend;
-use koopa::{back, ir::{dfg::DataFlowGraph, *}};
-use std::{collections::{ HashMap, LinkedList }, fmt::format};
+use koopa::{back, ir::{dfg::DataFlowGraph, *}, ir::layout::Layout};
+use std::{clone, collections::{ HashMap, LinkedList }, fmt::format, i32::MAX, os::linux::raw::stat};
 
 static GLOB_MAX_OFFSET: i32 = (1 << 11) - 1;
 static GLOB_MIN_OFFSET: i32 = -(1 << 11);
 
 pub fn compile(prog: Program) -> String {
     let mut inst_list = LinkedList::<String>::new();
-    prog.generate_asm(&mut inst_list);
+    for (func, _) in prog.funcs() {
+        let context = Context::new(&prog, func);
+        func.generate_asm(&mut inst_list, &context);
+    }
+
     inst_list.push_back("\n".to_string());
     inst_list
         .iter()
@@ -16,53 +20,111 @@ pub fn compile(prog: Program) -> String {
         .join("\n")
 }
 trait GenerateAsm {
-    fn generate_asm(&self, asm: &mut LinkedList<String>);
+    fn generate_asm(&self, asm: &mut LinkedList<String>, context: &Context);
 }
-trait GenerateIns<T> {
-    fn generate_ins(&self, asm: &mut LinkedList<String>, data: &T);
+trait GenerateIns {
+    fn generate_ins(&self, asm: &mut LinkedList<String>, context: &Context, state: &State);
 }
 
-trait InstReg<T>
+trait InstReg
 {
-    fn get_load_reg(&self, asm: &mut LinkedList<String>, data: &T) -> String;
-    fn remove_reg(&self, asm: &mut LinkedList<String>, data: &T);
+    fn get_load_reg(&self, asm: &mut LinkedList<String>, context: &Context, state: &State) -> String;
+    fn remove_reg(&self, asm: &mut LinkedList<String>, context: &Context, state: &State);
 }
 
-impl GenerateAsm for Program {
-    fn generate_asm(&self, asm: &mut LinkedList<String>) {
-        asm.push_back(String::from(".text"));
-        asm.push_back(format!(".globl main"));
-        for &func in self.func_layout() {
-            let funcdata = self.func(func);
-            funcdata.generate_asm(asm);
-        }
-    }
-}
-
-
-struct FunctionState<'a> {
+struct State {
     sp_offset: HashMap<Value, i32>,
-    dfg: &'a DataFlowGraph
+    save_ra: bool,
+    padding_args: i32,
 }
 
-impl<'a> FunctionState<'a> {
-    pub fn get_stackframe_size(&self) -> usize
-    {
-        self.sp_offset.len() * 4
+
+struct Context<'a> {
+    program: &'a Program,
+    func: &'a Function,
+}
+
+impl Context<'_> {
+    pub fn new<'a>(program: &'a Program, func: &'a Function) -> Context<'a> {
+        Context { program, func }
     }
-    pub fn allocate(&mut self ,value: Value)
-    {
-        let offset = self.get_stackframe_size();
-        self.sp_offset.insert(value, offset as i32);
+
+    pub fn program(&self) -> &Program {
+        self.program
     }
-    pub fn get_offset(&self, value: Value) -> i32
+
+    pub fn func(&self) -> &Function {
+        self.func
+    }
+
+    pub fn func_data(&self) -> &FunctionData {
+        self.program.func(self.func.clone())
+    }
+
+    pub fn dfg(&self) -> &DataFlowGraph {
+        self.func_data().dfg()
+    }
+
+    pub fn layout(&self) -> &Layout {
+        self.func_data().layout()
+    }
+}
+
+impl State {
+    fn new(func_data: &FunctionData) -> State {
+        let mut state = State {
+            sp_offset: HashMap::new(),
+            save_ra: false,
+            padding_args: 0,
+        };
+        for (&bb, node) in func_data.layout().bbs() {
+            node.insts().iter().for_each(|(&value, _)|
+            {
+                let value_data = func_data.dfg().value(value);
+                if let ValueKind::Call(ins) = value_data.kind() {
+                    state.save_ra = true;
+                    state.padding_args = state.padding_args.max(ins.args().len() as i32 - 8);
+                }
+            })
+        }
+        for (&bb, node) in func_data.layout().bbs() {
+            backend::alloc_label(&bb);
+            node.insts().iter().for_each(|(&value, _)|
+            {
+                let value_data = func_data.dfg().value(value);
+                if !value_data.ty().is_unit()
+                {
+                    state.allocate(value);
+                }
+            });
+        }
+        state
+    }
+
+    fn get_stackframe_size(&self) -> usize
+    {
+        let mut size = 4 * self.sp_offset.len();
+        if self.save_ra
+        {
+            size += 4;
+        }
+        if self.padding_args > 0
+        {
+            size += 4 * self.padding_args as usize;
+        }
+        size
+    }
+    fn allocate(&mut self ,value: Value)
+    {
+        let offset: i32 = 4 * (self.sp_offset.len() as i32 +  self.padding_args);
+        self.sp_offset.insert(value, offset);
+    }
+    fn get_offset(&self, value: Value) -> i32
     {
         self.sp_offset.get(&value).expect("Get addr of a symbol that is not allocated").clone()
     }
-    pub fn get_dfg(&self) -> &'a DataFlowGraph
-    {
-        self.dfg
-    }
+
+    
 }
 
 fn store_word(asm: &mut LinkedList<String>, reg: &str, offset: i32) {
@@ -92,36 +154,24 @@ fn load_word(asm: &mut LinkedList<String>, reg: &str, offset: i32) {
     }
 }
 
-impl GenerateAsm for FunctionData {
-    fn generate_asm(&self, asm: &mut LinkedList<String>) {
+impl GenerateAsm for Function {
+    fn generate_asm(&self, asm: &mut LinkedList<String>, context: &Context) {
         
-        let mut func_state = FunctionState {
-            sp_offset: HashMap::new(),
-            dfg: self.dfg()
-        };
+        let func_state = State::new(context.func_data());
 
-        
-        let name = if self.name().len() > 1 {
-            &self.name()[1..]
+        let name = if context.func_data().name().len() > 1 {
+            &context.func_data().name()[1..]
         } else {
-            panic!("An invalid function name {}", self.name())
+            panic!("An invalid function name {}", context.func_data().name())
         };
         asm.push_back(format!("{}:", name));
 
-        // Preprocess
-        for (&bb, node) in self.layout().bbs() {
-            backend::alloc_label(&bb);
-            node.insts().iter().for_each(|(&value, _)|
-            {
-                let value_date = self.dfg().value(value);
-                if !value_date.ty().is_unit()
-                {
-                    func_state.allocate(value);
-                }
-            });
+        // Prelogue
+        if func_state.save_ra
+        {
+            asm.push_back("sw ra, -4(sp)".to_string());
         }
 
-        // Prelogue
         let stack_size = func_state.get_stackframe_size() as i32;
         if -stack_size >= GLOB_MIN_OFFSET
         {
@@ -133,10 +183,10 @@ impl GenerateAsm for FunctionData {
             asm.push_back("add sp, sp, t0".to_string());   
         }
 
-        for (&bb, node) in self.layout().bbs() {
+        for (&bb, node) in context.layout().bbs() {
             asm.push_back(format!("{}:", backend::get_label(&bb).expect("The label is not allocated")));
             for &inst in node.insts().keys() {
-                inst.generate_ins(asm, &func_state);
+                inst.generate_ins(asm, context, &func_state);
             }
 
             asm.push_back("".to_string());
@@ -144,10 +194,9 @@ impl GenerateAsm for FunctionData {
     }
 }
 
-impl<'a> InstReg<FunctionState<'a>> for Value {
-    fn get_load_reg(&self, asm: &mut LinkedList<String>, func_state: &FunctionState) -> String {
-        let dfg = func_state.dfg;
-        let value_data = dfg.value(*self);
+impl InstReg for Value {
+    fn get_load_reg(&self, asm: &mut LinkedList<String>, context: &Context, func_state: &State) -> String {
+        let value_data = context.dfg().value(*self);
         let default_getreg = |asm: &mut LinkedList<String>| {
 
             let reg = backend::alloc_ins_reg(self);
@@ -173,12 +222,30 @@ impl<'a> InstReg<FunctionState<'a>> for Value {
             },
             ValueKind::Load(_) => default_getreg(asm),
             ValueKind::Alloc(_) => default_getreg(asm),
+            ValueKind::FuncArgRef(ins) =>
+            {
+                if ins.index() < 8
+                {
+                    format!("a{}", ins.index())
+                }
+                else
+                {
+                    let reg = backend::alloc_ins_reg(self);
+                    let offset:i32 = ((ins.index() - 8) * 4).try_into().unwrap();
+                    load_word(asm, reg.as_str(), offset);
+                    reg
+                }
+            },
+            ValueKind::Call(_) => 
+            {
+                assert!(!value_data.ty().is_unit());
+                default_getreg(asm)
+            }
             other => panic!("Not Implemented for value type {:#?}", other),
         }
     }
-    fn remove_reg(&self, _asm: &mut LinkedList<String>, func_state: &FunctionState<'a>) {
-        let dfg = func_state.dfg;
-        let value_data = dfg.value(*self);
+    fn remove_reg(&self, _asm: &mut LinkedList<String>, context: &Context, func_state: &State) {
+        let value_data = context.dfg().value(*self);
         let default_remove_reg = || {
             backend::remove_reg(self);
         };
@@ -191,21 +258,33 @@ impl<'a> InstReg<FunctionState<'a>> for Value {
             },
             ValueKind::Load(_) => default_remove_reg(),
             ValueKind::Alloc(_) => default_remove_reg(),
+            ValueKind::FuncArgRef(ins) =>
+            {
+                if ins.index() >= 8
+                {
+                    default_remove_reg();
+                }
+            }
+            ValueKind::Call(_) => 
+            {
+                assert!(!value_data.ty().is_unit());
+                default_remove_reg();
+            }
             other => panic!("Not Implemented for value type {:#?}", other),
         }
     }
 }
 
-impl<'a> GenerateIns<FunctionState<'a>> for Value {
-    fn generate_ins(&self, asm: &mut LinkedList<String>, func_state: &FunctionState) {
-        let dfg = func_state.dfg;
-        
-        let value_data = dfg.value(*self);
+impl GenerateIns for Value {
+    fn generate_ins(&self, asm: &mut LinkedList<String>, context: &Context, func_state: &State) {
+
+        let value_data = context.dfg().value(*self);
         match value_data.kind() {
             ValueKind::Return(ins) => {
                 // Epilogue
-                let epilogue = |stack_size: i32| ->LinkedList<String> {
+                let epilogue = |func_state: &State| ->LinkedList<String> {
                     let mut linked_list = LinkedList::<String>::new();
+                    let stack_size = func_state.get_stackframe_size() as i32;
                     if stack_size <= GLOB_MAX_OFFSET
                     {
                         linked_list.push_back(format!("addi sp, sp, {}", stack_size));
@@ -215,32 +294,28 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
                         linked_list.push_back(format!("li t0, {}", stack_size));
                         linked_list.push_back("add sp, sp, t0".to_string());
                     }
+                    if func_state.save_ra
+                    {
+                        linked_list.push_back("lw ra, -4(sp)".to_string());
+                    }
                     linked_list
                 };
 
 
+                asm.extend(epilogue(func_state));
                 let value = ins.value();
                 if let Some(value) = value
                 {
-                    let reg = value.get_load_reg(asm, func_state);
+                    let reg = value.get_load_reg(asm, context, func_state);
                     asm.push_back(format!("mv a0, {}", reg));
-                    asm.extend(epilogue(func_state.get_stackframe_size() as i32));
-                    asm.push_back("ret".to_string());
-                    value.remove_reg(asm, func_state);
-
+                    value.remove_reg(asm, context, func_state);
                 }
-                else
-                {
-                    asm.push_back("li a0, 0".to_string());
-                    asm.extend(epilogue(func_state.get_stackframe_size() as i32));
-                    asm.push_back("ret".to_string());
-
-                }
+                asm.push_back("ret".to_string());
             },
 
             ValueKind::Binary(ins) => {
-                let lhs = ins.lhs().get_load_reg(asm, func_state);
-                let rhs  = ins.rhs().get_load_reg(asm, func_state);
+                let lhs = ins.lhs().get_load_reg(asm, context, func_state);
+                let rhs  = ins.rhs().get_load_reg(asm, context, func_state);
                 let reg = backend::alloc_ins_reg(self);
                 
                 match ins.op() {
@@ -317,26 +392,26 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
                 let offset = func_state.get_offset(self.clone());
                 store_word(asm, reg.as_str(), offset);
 
-                ins.lhs().remove_reg(asm, func_state);
-                ins.rhs().remove_reg(asm, func_state);
+                ins.lhs().remove_reg(asm, context, func_state);
+                ins.rhs().remove_reg(asm, context, func_state);
                 backend::remove_reg(self);
             },
 
             ValueKind::Store(ins) =>
             {
                 let value = ins.value();
-                let value_reg = value.get_load_reg(asm, func_state);
+                let value_reg = value.get_load_reg(asm, context, func_state);
                 let offset = func_state.get_offset(ins.dest());
                 store_word(asm, value_reg.as_str(), offset);
-                value.remove_reg(asm, func_state);
+                value.remove_reg(asm, context, func_state);
             },
 
             ValueKind::Load(ins) =>
             {
-                let reg = ins.src().get_load_reg(asm, func_state);
+                let reg = ins.src().get_load_reg(asm, context, func_state);
                 let offset = func_state.get_offset(self.clone());
                 store_word(asm, reg.as_str(), offset);
-                ins.src().remove_reg(asm, func_state);
+                ins.src().remove_reg(asm, context, func_state);
             }
 
             ValueKind::Alloc(_) => (),
@@ -349,14 +424,39 @@ impl<'a> GenerateIns<FunctionState<'a>> for Value {
 
             ValueKind::Branch(ins) =>
             {
-                let cond = ins.cond().get_load_reg(asm, func_state);
+                let cond = ins.cond().get_load_reg(asm, context, func_state);
                 let true_label = backend::get_label(&ins.true_bb()).expect("The label is not allocated");
                 let false_label = backend::get_label(&ins.false_bb()).expect("The label is not allocated");
                 asm.push_back(format!("bnez {}, {}", cond, true_label));
-                ins.cond().remove_reg(asm, func_state);
+                ins.cond().remove_reg(asm, context, func_state);
                 asm.push_back(format!("j {}", false_label));
             },
 
+            ValueKind::Call(ins) =>
+            {
+                let args = ins.args();
+                for i in 0..args.len() {
+                    let arg = args[i];
+                    let reg = arg.get_load_reg(asm, context, func_state);
+                    if i < 8
+                    {
+                        asm.push_back(format!("mv a{}, {}", i, reg));
+                    }
+                    else
+                    {
+                        let offset:i32 = ((i - 8) * 4).try_into().unwrap();
+                        store_word(asm, reg.as_str(), offset);
+                    }
+                    arg.remove_reg(asm, context, func_state);
+                }
+
+                asm.push_back(format!("call {}", &context.program.func(ins.callee()).name()[1..]));
+                if !value_data.ty().is_unit()
+                {
+                    store_word(asm, "a0", func_state.get_offset(self.clone()));
+                }
+                    
+            },
             other => panic!("Not Implemented for value type {:#?}", other)
         }
     }
