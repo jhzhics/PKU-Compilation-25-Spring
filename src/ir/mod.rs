@@ -206,14 +206,13 @@ impl CompUnit {
             match var_decl {
                 Decl::VarDecl { btype, var_defs } => {
                     for (ident, exp) in var_defs {
-                        let constant : i32 =
-                        if let Some(exp) = exp {
-                            exp.try_into().expect("VarDecl expect a const value at compile time")
+                        let constant_value = if let Some(exp) = exp {
+                            let constant = exp.try_into().expect("VarDecl expect a const value at compile time");
+                            program.new_value().integer(constant)
                         } else {
-                            0
+                            program.new_value().zero_init(btype.into())
                         };
-                        let constant = program.new_value().integer(constant);
-                        let value = program.new_value().global_alloc(constant);
+                        let value = program.new_value().global_alloc(constant_value);
                         symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(value)));
                     }
                 },
