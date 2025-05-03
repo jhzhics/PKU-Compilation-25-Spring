@@ -232,13 +232,15 @@ impl GenerateAsm for Function {
 
 impl InstReg for Value {
     fn get_load_reg(&self, asm: &mut LinkedList<String>, context: &Context, func_state: &State) -> String {
-        let value_data = if self.is_global()
+        let global_value_data;
+        let value_kind = if self.is_global()
         {
-            &*context.program().borrow_value(*self)
+            global_value_data = context.program().borrow_value(*self);
+            global_value_data.kind()
         }
         else
         {
-            context.dfg().value(*self)
+            context.dfg().value(*self).kind()
         };
 
         let default_getreg = |asm: &mut LinkedList<String>| {
@@ -249,7 +251,7 @@ impl InstReg for Value {
             load_word(asm, reg.as_str(), offset);
             reg
         };
-        match value_data.kind() {
+        match value_kind {
             ValueKind::Binary(_) => default_getreg(asm),
             ValueKind::Integer(ins) =>
             {
@@ -283,11 +285,12 @@ impl InstReg for Value {
             },
             ValueKind::Call(_) => 
             {
-                assert!(!value_data.ty().is_unit());
+                assert!(!context.dfg().value(*self).ty().is_unit());
                 default_getreg(asm)
             },
             ValueKind::GlobalAlloc(ins) =>
             {
+                let value_data = context.program().borrow_value(*self);
                 let name = &value_data.name().as_ref().expect("The global alloc does not have a name")[1..];
                 let reg = backend::alloc_ins_reg(self);
                 asm.push_back(format!("la {}, {}", reg, name));
@@ -298,18 +301,20 @@ impl InstReg for Value {
         }
     }
     fn remove_reg(&self, _asm: &mut LinkedList<String>, context: &Context, func_state: &State) {
-        let value_data = if self.is_global()
+        let global_value_data;
+        let value_kind = if self.is_global()
         {
-            &*context.program().borrow_value(*self)
+            global_value_data = context.program().borrow_value(*self);
+            global_value_data.kind()
         }
         else
         {
-            context.dfg().value(*self)
+            context.dfg().value(*self).kind()
         };
         let default_remove_reg = || {
             backend::remove_reg(self);
         };
-        match value_data.kind() {
+        match value_kind {
             ValueKind::Binary(_) => default_remove_reg(),
             ValueKind::Integer(ins) =>
             {
@@ -327,7 +332,7 @@ impl InstReg for Value {
             },
             ValueKind::Call(_) => 
             {
-                assert!(!value_data.ty().is_unit());
+                assert!(!context.dfg().value(*self).ty().is_unit());
                 default_remove_reg();
             },
             ValueKind::GlobalAlloc(ins) =>
