@@ -1,7 +1,9 @@
 mod symtable;
+use symtable::SymValue;
 use super::ast::{*};
 
 use std::collections::LinkedList;
+use std::f32::consts::E;
 use std::mem;
 use std::task::Context;
 use koopa::ir::{builder_traits::*, dfg, BasicBlock, Type, Value, ValueKind};
@@ -106,6 +108,15 @@ impl From<&ValType> for koopa_ir::Type {
     }
 }
 
+impl From<&FuncType> for koopa_ir::Type {
+    fn from(func_type: &FuncType) -> Self {
+        match func_type {
+            FuncType::Int => koopa_ir::Type::get_i32(),
+            FuncType::Void => koopa_ir::Type::get_unit(),
+        }
+    }
+}
+
 trait KoopaAppend<T, U> {
     fn koopa_append(&self, koopa_entity: &mut T, context: IRContext, state: &mut IRState) -> U;
 }
@@ -122,15 +133,20 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Ident {
     fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph, context: IRContext, state: &mut IRState)
     -> koopa_ir::Value {
         let entry = symtable::get(&self.name).expect("Use a symbol that is not declared");
-        let (value, constant) = entry;
-        match constant {
-            Some(_) => value,
-            None =>
-            {
-                let load_inst = dfg.new_value().load(value);
-                state.ints_list.push_back(load_inst);
-                load_inst
+        if let SymValue::Value(value, constant) = entry
+        {
+            match constant {
+                Some(_) => value,
+                None =>
+                {
+                    let load_inst = dfg.new_value().load(value);
+                    state.ints_list.push_back(load_inst);
+                    load_inst
+                }
             }
+        }
+        else {
+            panic!("Use other ident as a variable");
         }
     }
 }
@@ -223,6 +239,19 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                 value = func_data.dfg_mut().new_value().load(result);
                 state.ints_list.push_back(value);
                 value
+            },
+            Exp::Call { ident, args } =>
+            {
+                if let SymValue::Function(func) = symtable::get(ident.name.as_str()).expect("Call a function that is not declared")
+                {
+                    let args = args.iter().map(|arg| arg.koopa_append(func_data, context, state)).collect::<Vec<_>>();
+                    let value = func_data.dfg_mut().new_value().call(func, args);
+                    state.ints_list.push_back(value);
+                    value
+                }
+                else {
+                    panic!("Call a non-function");
+                }
             }
         }
     }
@@ -240,7 +269,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                 {
                     let constant : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
                     let value = dfg.new_value().integer(constant);
-                    symtable::insert(ident.name.as_str(), value, Some(constant));
+                    symtable::insert(ident.name.as_str(), SymValue::Value(value, Some(constant)));
                 });
             },
             Decl::VarDecl { btype, var_defs } =>
@@ -249,7 +278,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                 var_defs.iter().for_each(|(ident, exp)|
                 {
                     let var = func_data.dfg_mut().new_value().alloc(btype.into());
-                    symtable::insert(ident.name.as_str(), var, None);
+                    symtable::insert(ident.name.as_str(), SymValue::Value(var, None));
                     state.ints_list.push_back(var);
                     if let Some(exp) = exp
                     {
@@ -270,21 +299,40 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
     -> () {
         match self {
             Stmt::Return { exp } => {
-                let value = exp.koopa_append(func_data, context, state);
-                let dfg = func_data.dfg_mut();
-                state.ints_list.push_back(dfg.new_value().ret(Some(value)));
+                match exp {
+                    Some(exp) => {
+                        let value = exp.koopa_append(func_data, context, state);
+                        let dfg = func_data.dfg_mut();
+                        state.ints_list.push_back(dfg.new_value().ret(Some(value)));
+                    }
+                    None => {
+                        state.ints_list.push_back(func_data.dfg_mut().new_value().ret(None));
+                    }   
+                }
             },
             Stmt::Assign { ident, exp } =>
             {
-                let (var, constant) = symtable::get(&ident.name).expect("Assign a variable before declared");
+                if let SymValue::Value(var, constant ) = symtable::get(&ident.name).expect("Assign a variable before declared")
+                {
                 assert!(constant.is_none(), "Try to assign a constant");
                 let val  = exp.koopa_append(func_data, context, state);
                 let dfg = func_data.dfg_mut();
                 state.ints_list.push_back(
                     dfg.new_value().store(val, var)
-                );  
+                );
+                }
+                else {
+                    panic!("Assign a non-variable");
+                }
             },
-            Stmt::Exp {exp} => (),
+            Stmt::Exp {exp} => 
+            {
+                if let Some(exp) = exp
+                {
+                    let value = exp.koopa_append(func_data, context, state);
+                    state.ints_list.push_back(value);
+                }
+            }
             Stmt::If { cond, then_block: then_stmt, else_block: else_stmt } =>
             {
                 let cond_value= cond.koopa_append(func_data, context, state);
@@ -415,7 +463,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
             }
             else 
             {
-                let defalut_return = Stmt::Return { exp: Exp::Number { value: Number { value: 0 } } };
+                let defalut_return: Stmt = Stmt::Return { exp: None };
                 defalut_return.koopa_append(func_data, context, state);
             }
         }
@@ -428,18 +476,31 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
 impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
     fn koopa_append(&self, program: &mut koopa_ir::Program, context: IRContext, state: &mut IRState)
     -> koopa_ir::Function {
+        let params = self.params.iter().map(|param| (&param.btype).into()).collect::<Vec<_>>();
         let func = program.new_func(koopa_ir::FunctionData::new(
             "@".to_string() + &self.ident.name,
-            vec![],
+            params,
             (&self.func_type).into(),
         ));
+        symtable::insert(self.ident.name.as_str(), SymValue::Function(func));
+        symtable::push_scope();
         let func_data = program.func_mut(func);
         let entry_bb = func_data.dfg_mut().new_bb().basic_block(None);
         func_data.layout_mut().bbs_mut().extend([entry_bb]);
         state.set_current_bb(entry_bb, func_data);
+        self.params.iter().enumerate().for_each(|(i, param)| {
+            let alloc_value = func_data.dfg_mut().new_value().
+            alloc((&param.btype).into());
+            let ith_param = func_data.params()[i];
+            let store_value = func_data.dfg_mut().new_value().store(
+                ith_param, alloc_value);
+            symtable::insert(self.params[i].ident.name.as_str(), SymValue::Value(alloc_value, None));
+            state.ints_list.extend([alloc_value, store_value]);
+        });
         self.block.koopa_append(func_data, 
         IRContext::default(), state);
         state.finalize(func_data);
+        symtable::pop_scope();
         func
     }
 }
@@ -447,7 +508,10 @@ impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
 impl KoopaAppend<koopa_ir::Program, ()> for CompUnit {
     fn koopa_append(&self, program: &mut koopa_ir::Program, context: IRContext, state: &mut IRState)
     -> () {
-        self.func_def.koopa_append(program, context, state);
+        
+        self.func_defs.iter().for_each(|func_def| {
+            func_def.koopa_append(program, context, state);
+        });
     }
 }
 
@@ -463,8 +527,12 @@ impl TryFrom<&Exp> for i32{
             Exp::Ident { ident } => 
             {
                 let value = symtable::get(ident.name.as_str())
-                .expect("Use unrecognized symbol in const Exp").1.expect("Use variable in const Exp");
-                Ok(value)
+                .expect("Use unrecognized symbol in const Exp");
+                if let SymValue::Value(_, Some(constant)) = value
+                {
+                    return Ok(constant);
+                }
+                Err(format!("Use a function {} in const Exp", ident.name))
             },
             Exp::BinaryExp { binary_op, lhs, rhs } =>
             {
@@ -494,7 +562,8 @@ impl TryFrom<&Exp> for i32{
                     UnaryOp::Not => Ok((val == 0) as i32),
                     UnaryOp::Plus => Ok(val)
                 }
-            }
+            },
+            Exp::Call { ident, args } => Err(format!("Call function {} in const Exp", ident.name)),
         }
     }
 }

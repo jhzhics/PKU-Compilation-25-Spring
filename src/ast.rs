@@ -49,6 +49,11 @@ pub enum Exp {
         binary_op: BinaryOp,
         lhs: Box<Exp>,
         rhs: Box<Exp>
+    },
+    Call
+    {
+        ident: Ident,
+        args: Vec<Exp>
     }
 }
 
@@ -60,7 +65,7 @@ pub enum Decl {
 
 #[derive(Debug)]
 pub enum Stmt {
-    Return{exp: Exp},
+    Return{exp: Option<Exp>},
     Assign{ident: Ident, exp: Exp},
     Exp{exp: Option<Exp>},
     Block{block: Block},
@@ -96,16 +101,30 @@ pub enum ValType {
     Int,
 }
 
+/// FuncType    ::= "void" | "int";
+#[derive(Debug, Clone, Copy)]
+pub enum FuncType {
+    Void,
+    Int,
+}
+
+#[derive(Debug)]
+pub struct FuncParam {
+    pub btype: ValType,
+    pub ident: Ident,
+}
+
 /// FuncDef   ::= FuncType IDENT "(" ")" Block;
 #[derive(Debug)]
 pub struct FuncDef {
-    pub func_type: ValType,
+    pub func_type: FuncType,
     pub ident: Ident,
+    pub params: Vec<FuncParam>,
     pub block: Block,
 }
 
 /// CompUnit  ::= FuncDef;
 #[derive(Debug)]
 pub struct CompUnit {
-    pub func_def: FuncDef,
+    pub func_defs: Vec<FuncDef>,
 }

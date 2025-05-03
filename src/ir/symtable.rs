@@ -1,12 +1,16 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
-use koopa::ir::Value;
+use koopa::ir::{Value, Function};
 use lazy_static::lazy_static;
 
+#[derive(Debug, Clone, Copy)]
+pub enum SymValue {
+    Value(Value, Option<i32>),
+    Function(Function),
+}
 struct Entry
 {
-    pub value: Value,
-    pub const_int: Option<i32>,
+    pub value: SymValue,
     pub depth: i32
 }
 
@@ -22,7 +26,7 @@ impl Symtable {
         Symtable { table: HashMap::new(), depth: 0 }
     }
 
-    pub fn insert(&mut self ,s: &str, val: Value, constant: Option<i32>)
+    pub fn insert(&mut self ,s: &str, val: SymValue)
     {
         let q;
 
@@ -37,17 +41,21 @@ impl Symtable {
 
         if let Some(e) = q.back()
         {
-            assert!(e.depth < self.depth, "Multiple Definitions");
+            assert!(e.depth < self.depth, "Multiple Definitions conflict with current scope");
         }
-        q.push_back(Entry { value: val, const_int: constant, depth: self.depth });
+        if let Some(e) = q.front()
+        {
+            assert!(self.depth == 0 || e.depth > 0, "Multiple Definitions conflict with global scope");
+        }
+        q.push_back(Entry { value: val, depth: self.depth });
         
     }
 
-    pub fn get(&self, s: &str) -> Option<(Value, Option<i32>)>
+    pub fn get(&self, s: &str) -> Option<SymValue>
     {
         self.table.get(s).map(|q|{
             let e = q.back().expect("An existing deque is not empty");
-            (e.value, e.const_int)
+            e.value
         })
     }
 
@@ -85,14 +93,14 @@ lazy_static!{
 }
 
 
-pub fn insert(s: &str, val: Value, constant: Option<i32>)
+pub fn insert(s: &str, val: SymValue)
 {
     let mut global_symtable = GLOBAL_MAP.lock().unwrap();
-    global_symtable.insert(s, val, constant);
+    global_symtable.insert(s, val);
     
 }
 
-pub fn get(s: &str) -> Option<(Value, Option<i32>)>
+pub fn get(s: &str) -> Option<SymValue>
 {
     let global_symtable = GLOBAL_MAP.lock().unwrap();
     global_symtable.get(s)

@@ -39,9 +39,26 @@ PrimaryExp: Exp = {
   <lval: LVal> => lval,
 };
 
+FuncRParams: Vec<Exp> = {
+  <first: Exp> <rest: ("," Exp)*> => {
+    let mut params = vec![first];
+    for (_, param) in rest {
+      params.push(param);
+    }
+    params
+  }
+};
+
 UnaryExp: Exp = {
     PrimaryExp,
     <unary_op: UnaryOp> <exp: UnaryExp> => Exp::UnaryExp { unary_op, exp: Box::new(exp) },
+    <ident: Ident> "(" <params: FuncRParams?> ")" => {
+        let params = match params {
+            Some(params) => params,
+            None => vec![]
+        };
+        Exp::Call { ident, args: params }
+    }
 };
 
 AddExp: Exp = {
@@ -187,7 +204,7 @@ VarDecl: Decl = {
 
 OtherStmt: Stmt = 
 {
-  "return" <exp: Exp> ";" => Stmt::Return { exp },
+  "return" <exp: Exp?> ";" => Stmt::Return { exp },
   <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign {
     ident:
     {if let Exp::Ident { ident } = lval {
@@ -332,14 +349,51 @@ Block: Block = {
   }
 };
 
-FuncType: ValType = "int" => ValType::Int;
+FuncType: FuncType = 
+{
+  "void" => FuncType::Void,
+  "int" => FuncType::Int
+};
 
 BType: ValType = "int" => ValType::Int;
 
+FuncFParam: FuncParam = {
+  <btype: BType> <ident: Ident> => FuncParam {
+    btype,
+    ident
+  }
+};
+
+FuncFParams: Vec<FuncParam> = {
+  <first: FuncFParam> <rest: ("," FuncFParam)*> => {
+    let mut params = vec![first];
+    for (_, param) in rest {
+      params.push(param);
+    }
+    params
+  }
+};
+
 FuncDef: FuncDef = {
-  <func_type: FuncType> <ident: Ident> "(" ")" <block: Block> => {
-    FuncDef { <> }
+  <func_type: FuncType> <ident: Ident> "(" <params: FuncFParams?> ")" <block: Block> => {
+    let params = match params {
+      Some(params) => params,
+      None => vec![]
+    };
+    FuncDef {
+      func_type,
+      ident,
+      params,
+      block
+    }
   }
 }
-
-pub CompUnit: CompUnit = <func_def: FuncDef> => CompUnit { <> };
+pub CompUnit: CompUnit = <func_def: FuncDef> <rest: FuncDef*> => {
+  let mut func_defs = vec![func_def];
+  for func_def in rest {
+    func_defs.push(func_def);
+  }
+  CompUnit {
+    func_defs
+  }
+};
