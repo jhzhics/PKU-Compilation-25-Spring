@@ -50,10 +50,6 @@ impl Symtable {
         {
             assert!(e.depth < self.depth, "Multiple Definitions conflict with current scope");
         }
-        if let Some(e) = q.front()
-        {
-            assert!(self.depth == 0 || e.depth > 0, "Multiple Definitions conflict with global scope");
-        }
         q.push_back(Entry { value: val, depth: self.depth });
         
     }

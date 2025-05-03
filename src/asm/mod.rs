@@ -77,7 +77,7 @@ fn generate_dataseg(asm: &mut LinkedList<String>, prog: &Program) {
         
         if let ValueKind::GlobalAlloc(ins) = value_data.kind() {
             let name =  &value_data.name().as_ref().expect("The global alloc does not have a name")[1..];
-            asm.push_back(format!("global {}", name));
+            asm.push_back(format!(".globl {}", name));
             asm.push_back(format!("{}:", name));
             let init_value = prog.borrow_value(ins.init());
             match init_value.kind() {
@@ -199,7 +199,7 @@ impl GenerateAsm for Function {
             panic!("An invalid function name {}", context.func_data().name())
         };
         asm.push_back(format!(".text"));
-        asm.push_back(format!(".global {}", name));
+        asm.push_back(format!(".globl {}", name));
         asm.push_back(format!("{}:", name));
 
         // Prelogue
@@ -275,7 +275,8 @@ impl InstReg for Value {
                 else
                 {
                     let reg = backend::alloc_ins_reg(self);
-                    let offset:i32 = ((ins.index() - 8) * 4).try_into().unwrap();
+                    let mut offset:i32 = ((ins.index() - 8) * 4).try_into().unwrap();
+                    offset += func_state.get_stackframe_size() as i32;
                     load_word(asm, reg.as_str(), offset);
                     reg
                 }
