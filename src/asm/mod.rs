@@ -6,7 +6,9 @@ static GLOB_MAX_OFFSET: i32 = (1 << 11) - 1;
 static GLOB_MIN_OFFSET: i32 = -(1 << 11);
 
 pub fn compile(prog: Program) -> String {
-    let mut inst_list = LinkedList::<String>::new();
+    let mut inst_list: LinkedList<String> = LinkedList::<String>::new();
+    generate_dataseg(&mut inst_list, &prog);
+
     for (func, _) in prog.funcs() {
         let context = Context::new(&prog, func);
         func.generate_asm(&mut inst_list, &context);
@@ -38,7 +40,6 @@ struct State {
     padding_args: i32,
 }
 
-
 struct Context<'a> {
     program: &'a Program,
     func: &'a Function,
@@ -69,6 +70,31 @@ impl Context<'_> {
         self.func_data().layout()
     }
 }
+
+fn generate_dataseg(asm: &mut LinkedList<String>, prog: &Program) {
+    asm.push_back(format!(".data"));
+    for (value, value_data) in prog.borrow_values().iter() {
+        
+        if let ValueKind::GlobalAlloc(ins) = value_data.kind() {
+            let name =  &value_data.name().as_ref().expect("The global alloc does not have a name")[1..];
+            asm.push_back(format!("global {}", name));
+            asm.push_back(format!("{}:", name));
+            let init_value = prog.borrow_value(ins.init());
+            match init_value.kind() {
+                ValueKind::Integer(ins) => {
+                    let val = ins.value();
+                    asm.push_back(format!(".word {}", val));
+                },
+                ValueKind::ZeroInit(ins) => {
+                    asm.push_back(format!(".zero 4"));  
+                },
+                _ => panic!("Not Implemented for value type {:#?}", init_value.kind())
+            }
+            asm.push_back(String::new());
+        }
+    }
+}
+
 
 impl State {
     fn new(func_data: &FunctionData) -> State {
@@ -206,7 +232,15 @@ impl GenerateAsm for Function {
 
 impl InstReg for Value {
     fn get_load_reg(&self, asm: &mut LinkedList<String>, context: &Context, func_state: &State) -> String {
-        let value_data = context.dfg().value(*self);
+        let value_data = if self.is_global()
+        {
+            &*context.program().borrow_value(*self)
+        }
+        else
+        {
+            context.dfg().value(*self)
+        };
+
         let default_getreg = |asm: &mut LinkedList<String>| {
 
             let reg = backend::alloc_ins_reg(self);
@@ -250,12 +284,27 @@ impl InstReg for Value {
             {
                 assert!(!value_data.ty().is_unit());
                 default_getreg(asm)
-            }
+            },
+            ValueKind::GlobalAlloc(ins) =>
+            {
+                let name = &value_data.name().as_ref().expect("The global alloc does not have a name")[1..];
+                let reg = backend::alloc_ins_reg(self);
+                asm.push_back(format!("la {}, {}", reg, name));
+                asm.push_back(format!("lw {}, 0({})", reg, reg));
+                reg
+            },
             other => panic!("Not Implemented for value type {:#?}", other),
         }
     }
     fn remove_reg(&self, _asm: &mut LinkedList<String>, context: &Context, func_state: &State) {
-        let value_data = context.dfg().value(*self);
+        let value_data = if self.is_global()
+        {
+            &*context.program().borrow_value(*self)
+        }
+        else
+        {
+            context.dfg().value(*self)
+        };
         let default_remove_reg = || {
             backend::remove_reg(self);
         };
@@ -274,12 +323,16 @@ impl InstReg for Value {
                 {
                     default_remove_reg();
                 }
-            }
+            },
             ValueKind::Call(_) => 
             {
                 assert!(!value_data.ty().is_unit());
                 default_remove_reg();
-            }
+            },
+            ValueKind::GlobalAlloc(ins) =>
+            {
+                default_remove_reg();
+            },
             other => panic!("Not Implemented for value type {:#?}", other),
         }
     }
@@ -411,10 +464,24 @@ impl GenerateIns for Value {
             ValueKind::Store(ins) =>
             {
                 let value = ins.value();
-                let value_reg = value.get_load_reg(asm, context, func_state);
-                let offset = func_state.get_offset(ins.dest());
-                store_word(asm, value_reg.as_str(), offset);
-                value.remove_reg(asm, context, func_state);
+                let dest = ins.dest();
+                if dest.is_global()
+                {
+                    let dest_data = context.program().borrow_value(dest);
+                    let name = &dest_data.name().as_ref().expect("The global alloc does not have a name")[1..];
+                    let value_reg: String = value.get_load_reg(asm, context, func_state);
+                    let dest_reg = backend::alloc_ins_reg(&dest);
+                    asm.push_back(format!("la {}, {}", dest_reg, name));
+                    asm.push_back(format!("sw {}, 0({})", value_reg, dest_reg));
+                    value.remove_reg(asm, context, func_state);
+                    backend::remove_reg(&dest);
+                }
+                else {
+                    let value_reg = value.get_load_reg(asm, context, func_state);
+                    let offset = func_state.get_offset(ins.dest());
+                    store_word(asm, value_reg.as_str(), offset);
+                    value.remove_reg(asm, context, func_state);
+                }
             },
 
             ValueKind::Load(ins) =>

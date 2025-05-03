@@ -5,6 +5,7 @@ use super::ast::{*};
 
 use std::collections::LinkedList;
 use std::f32::consts::E;
+use std::fmt::format;
 use std::mem;
 use std::os::unix::process;
 use std::task::Context;
@@ -213,6 +214,7 @@ impl CompUnit {
                             program.new_value().zero_init(btype.into())
                         };
                         let value = program.new_value().global_alloc(constant_value);
+                        program.set_value_name(value, Some(format!("@{}", ident.name)));
                         symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(value)));
                     }
                 },
@@ -224,7 +226,7 @@ impl CompUnit {
                         // I use constant_value as a placeholder
                         symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Constant(constant)));
                     }
-                }
+                },
                 _ => {}   
             }
         }
