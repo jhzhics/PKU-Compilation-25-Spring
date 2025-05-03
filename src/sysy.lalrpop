@@ -349,13 +349,11 @@ Block: Block = {
   }
 };
 
-FuncType: FuncType = 
+BType: ValType = 
 {
-  "void" => FuncType::Void,
-  "int" => FuncType::Int
-};
-
-BType: ValType = "int" => ValType::Int;
+  "int" => ValType::Int,
+  "void" => ValType::Void,
+}
 
 FuncFParam: FuncParam = {
   <btype: BType> <ident: Ident> => FuncParam {
@@ -375,7 +373,7 @@ FuncFParams: Vec<FuncParam> = {
 };
 
 FuncDef: FuncDef = {
-  <func_type: FuncType> <ident: Ident> "(" <params: FuncFParams?> ")" <block: Block> => {
+  <func_type: BType> <ident: Ident> "(" <params: FuncFParams?> ")" <block: Block> => {
     let params = match params {
       Some(params) => params,
       None => vec![]
@@ -391,9 +389,9 @@ FuncDef: FuncDef = {
 
 pub CompUnit: CompUnit =
 {
-  <Decl: Decl> => CompUnit {
+  <decl: Decl> => CompUnit {
     func_defs: vec![],
-    decls: vec![Decl]
+    decls: vec![decl]
   },
   <func_def: FuncDef> => CompUnit {
     func_defs: vec![func_def],

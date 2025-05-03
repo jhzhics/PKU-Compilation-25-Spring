@@ -169,18 +169,10 @@ impl TryFrom<&BinaryOp> for koopa_ir::BinaryOp {
 }
 
 impl From<&ValType> for koopa_ir::Type {
-    fn from(func_type: &ValType) -> Self {
-        match func_type {
+    fn from(val_type: &ValType) -> Self {
+        match val_type {
             ValType::Int => koopa_ir::Type::get_i32(),
-        }
-    }
-}
-
-impl From<&FuncType> for koopa_ir::Type {
-    fn from(func_type: &FuncType) -> Self {
-        match func_type {
-            FuncType::Int => koopa_ir::Type::get_i32(),
-            FuncType::Void => koopa_ir::Type::get_unit(),
+            ValType::Void => koopa_ir::Type::get_unit(),
         }
     }
 }

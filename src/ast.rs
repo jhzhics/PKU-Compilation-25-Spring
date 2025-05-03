@@ -95,17 +95,10 @@ pub struct Block {
     pub block_items: Vec<BlockItem>
 }
 
-/// FuncType  ::= "int";
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValType {
     Int,
-}
-
-/// FuncType    ::= "void" | "int";
-#[derive(Debug, Clone, Copy)]
-pub enum FuncType {
-    Void,
-    Int,
+    Void
 }
 
 #[derive(Debug)]
@@ -117,7 +110,7 @@ pub struct FuncParam {
 /// FuncDef   ::= FuncType IDENT "(" ")" Block;
 #[derive(Debug)]
 pub struct FuncDef {
-    pub func_type: FuncType,
+    pub func_type: ValType,
     pub ident: Ident,
     pub params: Vec<FuncParam>,
     pub block: Block,
