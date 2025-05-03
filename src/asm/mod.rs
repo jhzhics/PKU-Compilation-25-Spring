@@ -112,13 +112,17 @@ impl State {
         {
             size += 4 * self.padding_args as usize;
         }
+
+        size = (size + 15) / 16 * 16; // Align to 16 bytes
         size
     }
+
     fn allocate(&mut self ,value: Value)
     {
         let offset: i32 = 4 * (self.sp_offset.len() as i32 +  self.padding_args);
         self.sp_offset.insert(value, offset);
     }
+
     fn get_offset(&self, value: Value) -> i32
     {
         self.sp_offset.get(&value).expect("Get addr of a symbol that is not allocated").clone()
@@ -156,7 +160,11 @@ fn load_word(asm: &mut LinkedList<String>, reg: &str, offset: i32) {
 
 impl GenerateAsm for Function {
     fn generate_asm(&self, asm: &mut LinkedList<String>, context: &Context) {
-        
+        if context.func_data().layout().entry_bb().is_none()
+        {
+            return; // This is a function declaration
+        }
+
         let func_state = State::new(context.func_data());
 
         let name = if context.func_data().name().len() > 1 {
@@ -164,14 +172,11 @@ impl GenerateAsm for Function {
         } else {
             panic!("An invalid function name {}", context.func_data().name())
         };
+        asm.push_back(format!(".text"));
+        asm.push_back(format!(".global {}", name));
         asm.push_back(format!("{}:", name));
 
         // Prelogue
-        if func_state.save_ra
-        {
-            asm.push_back("sw ra, -4(sp)".to_string());
-        }
-
         let stack_size = func_state.get_stackframe_size() as i32;
         if -stack_size >= GLOB_MIN_OFFSET
         {
@@ -181,6 +186,11 @@ impl GenerateAsm for Function {
         {
             asm.push_back(format!("li t0, {}", -stack_size));
             asm.push_back("add sp, sp, t0".to_string());   
+        }
+
+        if func_state.save_ra
+        {
+            store_word(asm, "ra", stack_size - 4);
         }
 
         for (&bb, node) in context.layout().bbs() {
@@ -285,6 +295,11 @@ impl GenerateIns for Value {
                 let epilogue = |func_state: &State| ->LinkedList<String> {
                     let mut linked_list = LinkedList::<String>::new();
                     let stack_size = func_state.get_stackframe_size() as i32;
+                    if func_state.save_ra
+                    {
+                        load_word(&mut linked_list, "ra", stack_size - 4);
+                    }
+
                     if stack_size <= GLOB_MAX_OFFSET
                     {
                         linked_list.push_back(format!("addi sp, sp, {}", stack_size));
@@ -294,15 +309,10 @@ impl GenerateIns for Value {
                         linked_list.push_back(format!("li t0, {}", stack_size));
                         linked_list.push_back("add sp, sp, t0".to_string());
                     }
-                    if func_state.save_ra
-                    {
-                        linked_list.push_back("lw ra, -4(sp)".to_string());
-                    }
                     linked_list
                 };
 
 
-                asm.extend(epilogue(func_state));
                 let value = ins.value();
                 if let Some(value) = value
                 {
@@ -310,6 +320,7 @@ impl GenerateIns for Value {
                     asm.push_back(format!("mv a0, {}", reg));
                     value.remove_reg(asm, context, func_state);
                 }
+                asm.extend(epilogue(func_state));
                 asm.push_back("ret".to_string());
             },
 

@@ -5,6 +5,7 @@ use super::ast::{*};
 use std::collections::LinkedList;
 use std::f32::consts::E;
 use std::mem;
+use std::os::unix::process;
 use std::task::Context;
 use koopa::ir::{builder_traits::*, dfg, BasicBlock, Type, Value, ValueKind};
 use koopa::ir as koopa_ir;
@@ -59,10 +60,77 @@ impl IRState
     }
 }
 
+fn add_libfunc_declarations(program: &mut koopa_ir::Program) {
+    // decl @getint(): i32
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@getint".to_string(),
+        vec![],
+        koopa_ir::Type::get_i32(),
+    ));
+    symtable::insert("getint", SymValue::Function(func));
+    // decl @getch(): i32
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@getch".to_string(),
+        vec![],
+        koopa_ir::Type::get_i32(),
+    ));
+    symtable::insert("getch", SymValue::Function(func));
+    // decl @getarray(*i32): i32
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@getarray".to_string(),
+        vec![koopa_ir::Type::get_pointer(
+            koopa_ir::Type::get_i32(),
+        )],
+        koopa_ir::Type::get_i32(),
+    ));
+    symtable::insert("getarray", SymValue::Function(func));
+    // decl @putint(i32)
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@putint".to_string(),
+        vec![koopa_ir::Type::get_i32()],
+        koopa_ir::Type::get_unit(),
+    ));
+    symtable::insert("putint", SymValue::Function(func));
+    // decl @putch(i32)
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@putch".to_string(),
+        vec![koopa_ir::Type::get_i32()],
+        koopa_ir::Type::get_unit(),
+    ));
+    symtable::insert("putch", SymValue::Function(func));
+    // decl @putarray(i32, *i32)
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@putarray".to_string(),
+        vec![
+            koopa_ir::Type::get_i32(),
+            koopa_ir::Type::get_pointer(koopa_ir::Type::get_i32()),
+        ],
+        koopa_ir::Type::get_unit(),
+    ));
+    symtable::insert("putarray", SymValue::Function(func));
+    // decl @starttime()
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@starttime".to_string(),
+        vec![],
+        koopa_ir::Type::get_unit(),
+    ));
+    symtable::insert("starttime", SymValue::Function(func));
+    // decl @stoptime()
+    let func = program.new_func(koopa_ir::FunctionData::new(
+        "@stoptime".to_string(),
+        vec![],
+        koopa_ir::Type::get_unit(),
+    ));
+    symtable::insert("stoptime", SymValue::Function(func));
+}
+
 
 pub fn build_koopa(ast: CompUnit) -> koopa_ir::Program {
     let mut koopa_program = koopa_ir::Program::new();
     let mut state = IRState::default();
+
+    add_libfunc_declarations(&mut koopa_program);
+
     ast.koopa_append(&mut koopa_program, IRContext::default(), &mut state);
     koopa_program
 }
