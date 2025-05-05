@@ -38,9 +38,9 @@ pub enum Exp {
     Number {
         value: Number,
     },
-    Ident {
-        ident: Ident,
-    }, 
+    Lval {
+        lval: Lval,
+    },
     UnaryExp {
         unary_op: UnaryOp,
         exp: Box<Exp>,
@@ -58,15 +58,51 @@ pub enum Exp {
 }
 
 #[derive(Debug)]
+pub enum InitVal
+{
+    Scalar {
+        init_val: Option<Exp>
+    },
+    Array {
+        init_vals: Vec<Box<InitVal>>
+    }
+}
+
+#[derive(Debug)]
+pub enum DeclEntry {
+    Scalar {
+        ident: Ident,
+        init_val: InitVal,
+    },
+    Array {
+        ident: Ident,
+        shape: Vec<Exp>,
+        init_val: InitVal,
+    }
+}
+
+#[derive(Debug)]
 pub enum Decl {
-    ConstDecl{btype: ValType, const_defs:Vec<(Ident, Exp)>},
-    VarDecl{btype: ValType, var_defs:Vec<(Ident, Option<Exp>)>}
+    ConstDecl{btype: ValType, const_defs: Vec<DeclEntry>},
+    VarDecl{btype: ValType, var_defs: Vec<DeclEntry>}
+}
+
+#[derive(Debug)]
+pub enum Lval
+{
+    Ident {
+        ident: Ident,
+    },
+    Array {
+        ident: Ident,
+        index: Vec<Exp>,
+    }
 }
 
 #[derive(Debug)]
 pub enum Stmt {
     Return{exp: Option<Exp>},
-    Assign{ident: Ident, exp: Exp},
+    Assign{lval: Lval, exp: Exp},
     Exp{exp: Option<Exp>},
     Block{block: Block},
     If{cond: Exp, then_block: Block, else_block: Option<Block>},

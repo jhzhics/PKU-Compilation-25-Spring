@@ -23,8 +23,12 @@ Number: Number = <value: IntConst> => Number { <> };
 
 Ident: Ident = r"[_a-zA-Z][_a-zA-Z0-9]*" => Ident { name: <>.to_string() };
 
-LVal: Exp = {
-  <ident: Ident> => Exp::Ident { ident },
+LVal: Lval = {
+  <ident: Ident> => Lval::Ident { ident },
+  <ident: Ident> "[" <exp: Exp> "]" => Lval::Array {
+    ident,
+    index: vec![exp]
+  }
 };
 
 UnaryOp: UnaryOp = {
@@ -36,7 +40,7 @@ UnaryOp: UnaryOp = {
 PrimaryExp: Exp = {
   <number: Number> => Exp::Number { value: number },
   "(" <exp: Exp> ")" => exp,
-  <lval: LVal> => lval,
+  <lval: LVal> => Exp::Lval { lval }
 };
 
 FuncRParams: Vec<Exp> = {
@@ -158,21 +162,75 @@ ConstExp: Exp = {
   <exp: Exp> => exp
 };
 
-ConstInitVal: Exp = {
-  <const_exp: ConstExp> => const_exp
+ConstInitVal: InitVal = {
+  <const_exp: ConstExp> => InitVal::Scalar { init_val: Some(const_exp) },
+  "{" "}" => InitVal::Array {
+    init_vals: vec![]
+  },
+  "{" <const_exp: ConstInitVal> <rest: ("," ConstInitVal)*> "}" => {
+    let mut init_vals = vec![const_exp];
+    for (_, init_val) in rest {
+      init_vals.push(init_val);
+    }
+    InitVal::Array {
+      init_vals: init_vals.into_iter().map(|init_val| {
+        Box::new(init_val)
+      }).collect()
+    }
+  }
 };
 
-InitVal: Exp = {
-  <init_val: Exp> => init_val
+InitVal: InitVal = {
+  <init_val: Exp> => InitVal::Scalar { init_val: Some(init_val) },
+  "{" "}" => InitVal::Array {
+    init_vals: vec![]
+  },
+  "{" <init_val: InitVal> <rest: ("," InitVal)*> "}" => {
+    let mut init_vals = vec![init_val];
+    for (_, init_val) in rest {
+      init_vals.push(init_val);
+    }
+    InitVal::Array {
+      init_vals: init_vals.into_iter().map(|init_val| {
+        Box::new(init_val)
+      }).collect()
+    }
+  }
 };
 
-ConstDef: (Ident, Exp) = {
-  <ident: Ident> "=" <exp: ConstInitVal> => (ident, exp)
+ConstDef: DeclEntry = {
+  <ident: Ident> "=" <init_val: ConstInitVal> => DeclEntry::Scalar {
+    ident,
+    init_val
+  },
+  <ident: Ident> "[" <const_exp: ConstExp> "]" "=" <init_val: ConstInitVal> => DeclEntry::Array {
+    ident,
+    shape: vec![const_exp],
+    init_val
+  }
 };
 
-VarDef: (Ident, Option<Exp>) = {
-  <ident: Ident> "=" <exp: InitVal> => (ident, Some(exp)),
-  <ident: Ident> => (ident, None)
+VarDef: DeclEntry = {
+  <ident: Ident> "=" <init_val: InitVal> => DeclEntry::Scalar {
+    ident,
+    init_val
+  },
+  <ident: Ident> => DeclEntry::Scalar {
+    ident,
+    init_val: InitVal::Scalar { init_val: None }
+  },
+  <ident: Ident> "[" <const_exp: ConstExp> "]" "=" <init_val: InitVal> => DeclEntry::Array {
+    ident,
+    shape: vec![const_exp],
+    init_val
+  },
+  <ident: Ident> "[" <const_exp: ConstExp> "]" => DeclEntry::Array {
+    ident,
+    shape: vec![const_exp],
+    init_val: InitVal::Array {
+      init_vals: vec![]
+    }
+  }
 };
 
 ConstDecl: Decl = {
@@ -206,12 +264,7 @@ OtherStmt: Stmt =
 {
   "return" <exp: Exp?> ";" => Stmt::Return { exp },
   <lval: LVal> "=" <exp: Exp> ";" => Stmt::Assign {
-    ident:
-    {if let Exp::Ident { ident } = lval {
-      ident
-    } else {
-      panic!("Expected an identifier")
-    }},
+    lval,
     exp
   },
   "break" ";" => Stmt::Break,

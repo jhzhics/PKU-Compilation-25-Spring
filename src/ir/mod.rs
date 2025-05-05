@@ -204,31 +204,32 @@ impl CompUnit {
             symtable::insert(func_def.ident.name.as_str(), SymValue::Function(func));
         }
         for var_decl in &self.decls {
-            match var_decl {
-                Decl::VarDecl { btype, var_defs } => {
-                    for (ident, exp) in var_defs {
-                        let constant_value = if let Some(exp) = exp {
-                            let constant = exp.try_into().expect("VarDecl expect a const value at compile time");
-                            program.new_value().integer(constant)
-                        } else {
-                            program.new_value().zero_init(btype.into())
-                        };
-                        let value = program.new_value().global_alloc(constant_value);
-                        program.set_value_name(value, Some(format!("@{}", ident.name)));
-                        symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(value)));
-                    }
-                },
-                Decl::ConstDecl { btype, const_defs } => {
-                    assert!(btype.clone() == ValType::Int);
-                    for (ident, exp) in const_defs {
-                        let constant : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
+            panic!("Global var decl is not supported yet");
+            // match var_decl {
+            //     Decl::VarDecl { btype, var_defs } => {
+            //         for (ident, exp) in var_defs {
+            //             let constant_value = if let Some(exp) = exp {
+            //                 let constant = exp.try_into().expect("VarDecl expect a const value at compile time");
+            //                 program.new_value().integer(constant)
+            //             } else {
+            //                 program.new_value().zero_init(btype.into())
+            //             };
+            //             let value = program.new_value().global_alloc(constant_value);
+            //             program.set_value_name(value, Some(format!("@{}", ident.name)));
+            //             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(value)));
+            //         }
+            //     },
+            //     Decl::ConstDecl { btype, const_defs } => {
+            //         assert!(btype.clone() == ValType::Int);
+            //         for (ident, exp) in const_defs {
+            //             let constant : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
                         
-                        // I use constant_value as a placeholder
-                        symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Constant(constant)));
-                    }
-                },
-                _ => {}   
-            }
+            //             // I use constant_value as a placeholder
+            //             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Constant(constant)));
+            //         }
+            //     },
+            //     _ => {}   
+            // }
         }
     }
 }
@@ -256,6 +257,20 @@ impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Ident {
     }
 }
 
+impl KoopaAppend<koopa_ir::dfg::DataFlowGraph, koopa_ir::Value> for Lval {
+    fn koopa_append(&self, dfg: &mut koopa_ir::dfg::DataFlowGraph, context: IRContext, state: &mut IRState)
+    -> koopa_ir::Value {
+        match self {
+            Lval::Ident { ident } => ident.koopa_append(dfg, context, state),
+            Lval::Array { ident, index } => {
+                panic!("Array is not supported yet");
+            }
+        }
+    }
+    
+}
+
+
 impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
 
     /// # Returns
@@ -266,7 +281,7 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
      -> koopa_ir::Value {
         match self {
             Exp::Number{value} => value.koopa_append(func_data.dfg_mut(), context, state),
-            Exp::Ident { ident} => ident.koopa_append(func_data.dfg_mut(), context, state),
+            Exp::Lval { lval } => lval.koopa_append(func_data.dfg_mut(), context, state),
             Exp::UnaryExp{unary_op : UnaryOp::Plus, exp} => exp.koopa_append(func_data, context, state),
             Exp::UnaryExp{unary_op, exp} => {
                 let value = exp.koopa_append(func_data, context, state);
@@ -365,35 +380,36 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
 impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
     fn koopa_append(&self, func_data: &mut koopa_ir::FunctionData, context: IRContext, state: &mut IRState)
     -> () {
-        match self {
-            Decl::ConstDecl { btype, const_defs } =>
-            {
-                let dfg = func_data.dfg_mut();
-                assert!(btype.clone() == ValType::Int);
-                const_defs.iter().for_each(|(ident, exp)|
-                {
-                    let constant : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
-                    symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Constant(constant)));
-                });
-            },
-            Decl::VarDecl { btype, var_defs } =>
-            {
-                assert!(btype.clone() == ValType::Int);
-                var_defs.iter().for_each(|(ident, exp)|
-                {
-                    let var = func_data.dfg_mut().new_value().alloc(btype.into());
-                    symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(var)));
-                    state.ints_list.push_back(var);
-                    if let Some(exp) = exp
-                    {
-                        let val  = exp.koopa_append(func_data, context, state);
-                        state.ints_list.push_back(
-                            func_data.dfg_mut().new_value().store(val, var)
-                        );
-                    }
-                });
-            }
-        }
+        panic!("Decl is not supported yet");
+        // match self {
+        //     Decl::ConstDecl { btype, const_defs } =>
+        //     {
+        //         let dfg = func_data.dfg_mut();
+        //         assert!(btype.clone() == ValType::Int);
+        //         const_defs.iter().for_each(|(ident, exp)|
+        //         {
+        //             let constant : i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
+        //             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Constant(constant)));
+        //         });
+        //     },
+        //     Decl::VarDecl { btype, var_defs } =>
+        //     {
+        //         assert!(btype.clone() == ValType::Int);
+        //         var_defs.iter().for_each(|(ident, exp)|
+        //         {
+        //             let var = func_data.dfg_mut().new_value().alloc(btype.into());
+        //             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(var)));
+        //             state.ints_list.push_back(var);
+        //             if let Some(exp) = exp
+        //             {
+        //                 let val  = exp.koopa_append(func_data, context, state);
+        //                 state.ints_list.push_back(
+        //                     func_data.dfg_mut().new_value().store(val, var)
+        //                 );
+        //             }
+        //         });
+        //     }
+        // }
     }
 }
 
@@ -414,19 +430,20 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                     }   
                 }
             },
-            Stmt::Assign { ident, exp } =>
+            Stmt::Assign { lval, exp } =>
             {
-                if let SymValue::VarSymbol(VarSymbol::Variable(var)) = symtable::get(&ident.name).expect("Assign a variable before declared")
-                {
-                let val  = exp.koopa_append(func_data, context, state);
-                let dfg = func_data.dfg_mut();
-                state.ints_list.push_back(
-                    dfg.new_value().store(val, var)
-                );
-                }
-                else {
-                    panic!("Assign a non-variable");
-                }
+                panic!("Assign is not supported yet");
+                // if let SymValue::VarSymbol(VarSymbol::Variable(var)) = symtable::get(&ident.name).expect("Assign a variable before declared")
+                // {
+                // let val  = exp.koopa_append(func_data, context, state);
+                // let dfg = func_data.dfg_mut();
+                // state.ints_list.push_back(
+                //     dfg.new_value().store(val, var)
+                // );
+                // }
+                // else {
+                //     panic!("Assign a non-variable");
+                // }
             },
             Stmt::Exp {exp} => 
             {
@@ -626,15 +643,19 @@ impl TryFrom<&Exp> for i32{
     fn try_from(exp: &Exp) -> Result<Self, Self::Error> {
         match exp {
             Exp::Number { value } => Ok(value.value),
-            Exp::Ident { ident } => 
-            {
-                let value = symtable::get(ident.name.as_str())
-                .expect("Use unrecognized symbol in const Exp");
-                if let SymValue::VarSymbol(VarSymbol::Constant(constant)) = value
-                {
-                    return Ok(constant);
+            Exp::Lval { lval } => {
+                match lval {
+                    Lval::Ident { ident } => {
+                        let value = symtable::get(ident.name.as_str())
+                        .expect("Use unrecognized symbol in const Exp");
+                        if let SymValue::VarSymbol(VarSymbol::Constant(constant)) = value
+                        {
+                            return Ok(constant);
+                        }
+                        Err(format!("Use a function {} in const Exp", ident.name))
+                    },
+                    Lval::Array { .. } => Err(format!("Use an array as a const value"))
                 }
-                Err(format!("Use a function {} in const Exp", ident.name))
             },
             Exp::BinaryExp { binary_op, lhs, rhs } =>
             {
