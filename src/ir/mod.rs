@@ -1014,7 +1014,16 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
             }
             else 
             {
-                let defalut_return: Stmt = Stmt::Return { exp: None };
+                let ret_exp = if let TypeKind::Function(_, ret_type) = func_data.ty().kind() {
+                    match ret_type.kind() {
+                        koopa_ir::TypeKind::Unit => None,
+                        koopa_ir::TypeKind::Int32 => Some(Exp::Number { value: Number { value: 0 } }),
+                        _ => panic!("Return type is not int or void")
+                    }
+                } else {
+                    panic!("Function type is not a function");
+                };
+                let defalut_return: Stmt = Stmt::Return { exp: ret_exp };
                 defalut_return.koopa_append(func_data, context, state);
             }
         }
