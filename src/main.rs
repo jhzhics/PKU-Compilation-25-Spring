@@ -33,10 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.mode {
         cli::Mode::Koopa => excute_koopa(istream.as_mut(), ostream.as_mut()),
-        cli::Mode::Riscv => excute_riscv(istream.as_mut(), ostream.as_mut()),
-        cli::Mode::Perf => {
-            return Err("Perf mode is not implemented yet".into());
-        }
+        cli::Mode::Riscv | cli::Mode::Perf => excute_riscv(istream.as_mut(), ostream.as_mut())
     }
 }
 

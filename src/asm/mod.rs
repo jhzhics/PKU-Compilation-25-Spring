@@ -475,6 +475,7 @@ impl GenerateIns for Value {
                         else
                         {
                             asm.push_back(format!("xor {}, {}, {}", reg, lhs, rhs));
+                            asm.push_back(format!("snez {}, {}", reg, reg));
                         }
 
                     },
