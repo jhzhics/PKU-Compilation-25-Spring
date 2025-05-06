@@ -8,7 +8,8 @@ pub enum VarSymbol
 {
     Variable(Value),
     Constant(i32),
-    Array(Value),
+    Array(Value, usize), // (Array, dim)
+    Ptr(Value, usize), // (T *, dim of T[Constant]), so it's >= 1
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -2,7 +2,7 @@ mod symtable;
 use koopa::back::koopa;
 use ::koopa::ir::builder::{*};
 use ::koopa::ir::values::Aggregate;
-use ::koopa::ir::{BasicBlock, Value};
+use ::koopa::ir::{BasicBlock, TypeKind, Value, ValueKind};
 use symtable::{SymValue, VarSymbol};
 use super::ast::{*};
 
@@ -213,7 +213,24 @@ impl FuncParam {
     }
 }
 
-
+impl Ident {
+    fn get_dim(&self) -> usize {
+        let entry = symtable::get(&self.name).expect("Use a symbol that is not declared");
+        if let SymValue::VarSymbol(value) = entry
+        {
+            match value {
+                VarSymbol::Array(_, dim) => dim,
+                VarSymbol::Ptr(_, dim) => dim,
+                VarSymbol::Variable(_) => 0,
+                _ => panic!("Use other ident as a variable"),
+            }
+        }
+        else {
+            panic!("Use other ident as a variable");
+        }
+    }
+    
+}
 
 impl CompUnit {
     fn global_init(&self, program: &mut koopa_ir::Program) {
@@ -261,7 +278,7 @@ impl CompUnit {
                                 let value = aggregate_to_shape(init_val, &shape, program);
                                 let array_value = program.new_value().global_alloc(value);
                                 program.set_value_name(value, Some(format!("@{}", ident.name)));
-                                symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value)));
+                                symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value, shape.len())));
                             }
                         }
                     }
@@ -304,12 +321,11 @@ impl CompUnit {
                                     aggregate_to_shape(init_val, &shape, program)
                                 } else {
                                     let type_ = get_type_of_array(&shape, btype.into());
-                                    let init_vals = vec![program.new_value().zero_init(type_); size];
-                                    aggregate_to_shape(init_vals, &shape, program)
+                                    program.new_value().zero_init(type_)
                                 };
                                 let array_value = program.new_value().global_alloc(init_val);
                                 program.set_value_name(array_value, Some(format!("@{}", ident.name)));
-                                symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value)));   
+                                symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value, shape.len())));   
                             }
                         }
                     }
@@ -334,12 +350,17 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Ident {
                     state.ints_list.push_back(load_inst);
                     load_inst
                 },
-                VarSymbol::Array(value) => {
+                VarSymbol::Array(value, ..) => {
                     let zero = func_data.dfg_mut().new_value().integer(0);
                     let ptr = func_data.dfg_mut().new_value().get_elem_ptr(value, zero);
                     state.ints_list.push_back(ptr);
                     ptr
                 },
+                VarSymbol::Ptr(value, ..) => {
+                    let load_inst = func_data.dfg_mut().new_value().load(value);
+                    state.ints_list.push_back(load_inst);
+                    load_inst
+                }
             }
         }
         else {
@@ -355,15 +376,34 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Lval {
             Lval::Ident { ident } => ident.koopa_append(func_data, context, state),
             Lval::Array { ident, indices } => {
                 let mut value = ident.koopa_append(func_data, context, state);
+                assert!(indices.len() <= ident.get_dim(), "Array index out of bound");
+                let is_load_scaler = (indices.len() == ident.get_dim());
+                let mut is_first = true;
                 for idx in indices.iter()
                 {
                     let idx_value = idx.koopa_append(func_data, context, state);
-                    value = func_data.dfg_mut().new_value().get_ptr(value, idx_value);
+                    value = if is_first
+                    {
+                        is_first = false;
+                        func_data.dfg_mut().new_value().get_ptr(value, idx_value)
+                    }
+                    else
+                    {
+                        func_data.dfg_mut().new_value().get_elem_ptr(value, idx_value)
+                    };
                     state.ints_list.push_back(value);
                 }
-                let load_value = func_data.dfg_mut().new_value().load(value);
-                state.ints_list.push_back(load_value);
-                load_value
+                let ret_value = if is_load_scaler
+                {
+                    func_data.dfg_mut().new_value().load(value)
+                }
+                else
+                {
+                    let zero = func_data.dfg_mut().new_value().integer(0);
+                    func_data.dfg_mut().new_value().get_elem_ptr(value, zero)
+                };
+                state.ints_list.push_back(ret_value);
+                ret_value
             }
         }
     }
@@ -391,17 +431,38 @@ impl Lval {
                 let mut value = if let SymValue::VarSymbol(value) = entry
                 {
                     match value {
-                        VarSymbol::Array(value) => value,
+                        VarSymbol::Array(value, ..) => 
+                        {
+                            let zero = func_data.dfg_mut().new_value().integer(0);
+                            let ptr = func_data.dfg_mut().new_value().get_elem_ptr(value, zero);
+                            state.ints_list.push_back(ptr);
+                            ptr
+                        },
+                        VarSymbol::Ptr(value, ..) => 
+                        {
+                            let load_inst = func_data.dfg_mut().new_value().load(value);
+                            state.ints_list.push_back(load_inst);
+                            load_inst
+                        },
                         _ => panic!("Use other ident as a variable"),
                     }
                 }
                 else {
                     panic!("Use other ident as a variable");
                 };
+                let mut is_first = true;
                 for idx in index.iter()
                 {
                     let idx_value = idx.koopa_append(func_data, context, state);
-                    value = func_data.dfg_mut().new_value().get_elem_ptr(value, idx_value);
+                    value = if is_first
+                    {
+                        is_first = false;
+                        func_data.dfg_mut().new_value().get_ptr(value, idx_value)
+                    }
+                    else
+                    {
+                        func_data.dfg_mut().new_value().get_elem_ptr(value, idx_value)
+                    };
                     state.ints_list.push_back(value);
                 }
                 value
@@ -505,6 +566,7 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                 if let SymValue::Function(func) = symtable::get(ident.name.as_str()).expect("Call a function that is not declared")
                 {
                     let args = args.iter().map(|arg| arg.koopa_append(func_data, context, state)).collect::<Vec<_>>();
+                    println!("call func: {:?}", self);
                     let value = func_data.dfg_mut().new_value().call(func, args);
                     state.ints_list.push_back(value);
                     value
@@ -707,7 +769,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                             let init_val = init_val.adapt_to_shape(&shape);
                             let array_type = get_type_of_array(&shape, btype.into());
                             let array_value = func_data.dfg_mut().new_value().alloc(array_type);
-                            symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value)));
+                            symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value, shape.len())));
                             state.ints_list.push_back(array_value);
                             let size = shape.iter().fold(1, |acc, x| acc * x);
                             let init_vals = init_val.get_const_vals();
@@ -738,7 +800,6 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                 for var_def in var_defs {
                     match var_def {
                         DeclEntry::Scalar { ident, init_val } => {
-
                             let var = func_data.dfg_mut().new_value().alloc(btype.into());
                             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(var)));
                             state.ints_list.push_back(var);
@@ -762,7 +823,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
 
                             let array_type = get_type_of_array(&shape, btype.into());
                             let array_value = func_data.dfg_mut().new_value().alloc(array_type);
-                            symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value)));
+                            symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value, shape.len())));
                             state.ints_list.push_back(array_value);
                             if let Some(init_val) = init_val {
                                 let init_val = init_val.adapt_to_shape(&shape);
@@ -989,7 +1050,14 @@ impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
             let ith_param = func_data.params()[i];
             let store_value = func_data.dfg_mut().new_value().store(
                 ith_param, alloc_value);
-            symtable::insert(self.params[i].get_ident().name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(alloc_value)));
+            let symvalue = if let FuncParam::Array { btype, ident, shape } = param
+            {
+                SymValue::VarSymbol(VarSymbol::Ptr(alloc_value, shape.len() + 1))
+            }
+            else {
+                SymValue::VarSymbol(VarSymbol::Variable(alloc_value))
+            };
+            symtable::insert(self.params[i].get_ident().name.as_str(), symvalue);
             state.ints_list.extend([alloc_value, store_value]);
         });
         self.block.koopa_append(func_data, 
