@@ -504,7 +504,7 @@ impl GenerateIns for Value {
                 let dest = ins.dest();
                 let value_reg = value.get_load_reg(asm, context, func_state);
                 let dest_reg = dest.get_load_reg(asm, context, func_state);
-                asm.push_back(format!("sw {}, ({})", value_reg, dest_reg));
+                asm.push_back(format!("sw {}, 0({})", value_reg, dest_reg));
 
                 value.remove_reg(asm, context, func_state);
                 dest.remove_reg(asm, context, func_state);
@@ -514,7 +514,7 @@ impl GenerateIns for Value {
             {
                 let reg = backend::alloc_ins_reg(self);
                 let src_reg = ins.src().get_load_reg(asm, context, func_state);
-                asm.push_back(format!("lw {}, ({})", reg, src_reg));
+                asm.push_back(format!("lw {}, 0({})", reg, src_reg));
                 let offset = func_state.get_offset(self.clone());
                 store_word(asm, reg.as_str(), offset);
                 ins.src().remove_reg(asm, context, func_state);
