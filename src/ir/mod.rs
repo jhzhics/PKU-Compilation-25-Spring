@@ -234,15 +234,6 @@ impl Ident {
 
 impl CompUnit {
     fn global_init(&self, program: &mut koopa_ir::Program) {
-        for func_def in &self.func_defs {
-            let params = func_def.params.iter().map(|param| param.get_koopa_type()).collect::<Vec<_>>();
-            let func = program.new_func(koopa_ir::FunctionData::new(
-                "@".to_string() + &func_def.ident.name,
-                params,
-                (&func_def.func_type).into(),
-            ));
-            symtable::insert(func_def.ident.name.as_str(), SymValue::Function(func));
-        }
         for var_decl in &self.decls {
             match var_decl {
                 Decl::ConstDecl { btype, const_defs } =>
@@ -330,6 +321,16 @@ impl CompUnit {
                     }
                 }
             }
+        }
+        
+        for func_def in &self.func_defs {
+            let params = func_def.params.iter().map(|param| param.get_koopa_type()).collect::<Vec<_>>();
+            let func = program.new_func(koopa_ir::FunctionData::new(
+                "@".to_string() + &func_def.ident.name,
+                params,
+                (&func_def.func_type).into(),
+            ));
+            symtable::insert(func_def.ident.name.as_str(), SymValue::Function(func));
         }
     }
 }
