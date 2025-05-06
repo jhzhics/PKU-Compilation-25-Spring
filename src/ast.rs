@@ -137,10 +137,17 @@ pub enum ValType {
     Void
 }
 
-#[derive(Debug)]
-pub struct FuncParam {
-    pub btype: ValType,
-    pub ident: Ident,
+#[derive(Debug, Clone)]
+pub enum FuncParam {
+    Scalar {
+        btype: ValType,
+        ident: Ident,
+    },
+    Array {
+        btype: ValType,
+        ident: Ident,
+        shape: Vec<Exp>,
+    }
 }
 
 /// FuncDef   ::= FuncType IDENT "(" ")" Block;

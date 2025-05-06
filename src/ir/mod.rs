@@ -190,10 +190,35 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Number {
     }
 }
 
+impl FuncParam {
+    fn get_koopa_type(&self) -> koopa_ir::Type {
+        match self {
+            FuncParam::Scalar { btype , ..} => (&btype.clone()).into(),
+            FuncParam::Array { btype, shape, .. } => 
+            {
+                let shape = shape.iter().map(|exp| {
+                    let constant: i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
+                    constant as usize
+                }).collect::<Vec<_>>();
+                let elme_type = get_type_of_array(&shape, btype.into());
+                koopa_ir::Type::get_pointer(elme_type)
+            }
+        }
+    }
+    fn get_ident(&self) -> Ident {
+        match self {
+            FuncParam::Scalar { ident, .. } => ident.clone(),
+            FuncParam::Array { ident, .. } => ident.clone(),
+        }
+    }
+}
+
+
+
 impl CompUnit {
     fn global_init(&self, program: &mut koopa_ir::Program) {
         for func_def in &self.func_defs {
-            let params = func_def.params.iter().map(|param| (&param.btype).into()).collect::<Vec<_>>();
+            let params = func_def.params.iter().map(|param| param.get_koopa_type()).collect::<Vec<_>>();
             let func = program.new_func(koopa_ir::FunctionData::new(
                 "@".to_string() + &func_def.ident.name,
                 params,
@@ -310,7 +335,10 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Ident {
                     load_inst
                 },
                 VarSymbol::Array(value) => {
-                    value
+                    let zero = func_data.dfg_mut().new_value().integer(0);
+                    let ptr = func_data.dfg_mut().new_value().get_elem_ptr(value, zero);
+                    state.ints_list.push_back(ptr);
+                    ptr
                 },
             }
         }
@@ -325,12 +353,12 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Lval {
     -> koopa_ir::Value {
         match self {
             Lval::Ident { ident } => ident.koopa_append(func_data, context, state),
-            Lval::Array { ident, indices: index } => {
+            Lval::Array { ident, indices } => {
                 let mut value = ident.koopa_append(func_data, context, state);
-                for idx in index.iter()
+                for idx in indices.iter()
                 {
                     let idx_value = idx.koopa_append(func_data, context, state);
-                    value = func_data.dfg_mut().new_value().get_elem_ptr(value, idx_value);
+                    value = func_data.dfg_mut().new_value().get_ptr(value, idx_value);
                     state.ints_list.push_back(value);
                 }
                 let load_value = func_data.dfg_mut().new_value().load(value);
@@ -491,6 +519,10 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
 
 fn get_type_of_array(shape: &Vec<usize>, base_type: koopa_ir::Type) -> koopa_ir::Type
 {
+    if shape.len() == 0
+    {
+        return base_type;
+    }
     let mut type_ = base_type;
     for dim in shape.iter().rev()
     {
@@ -953,11 +985,11 @@ impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
         state.set_current_bb(entry_bb, func_data);
         self.params.iter().enumerate().for_each(|(i, param)| {
             let alloc_value = func_data.dfg_mut().new_value().
-            alloc((&param.btype).into());
+            alloc(param.get_koopa_type());
             let ith_param = func_data.params()[i];
             let store_value = func_data.dfg_mut().new_value().store(
                 ith_param, alloc_value);
-            symtable::insert(self.params[i].ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(alloc_value)));
+            symtable::insert(self.params[i].get_ident().name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(alloc_value)));
             state.ints_list.extend([alloc_value, store_value]);
         });
         self.block.koopa_append(func_data, 
