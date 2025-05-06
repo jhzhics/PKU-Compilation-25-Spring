@@ -1,7 +1,7 @@
 //! Abstract Syntax Tree (AST) module
 //! 
 /// Number    ::= INT_CONST;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Number {
     pub value: i32,
 }
@@ -33,7 +33,7 @@ pub enum BinaryOp {
 }
 
 /// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Exp {
     Number {
         value: Number,
@@ -57,11 +57,11 @@ pub enum Exp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InitVal
 {
     Scalar {
-        init_val: Option<Exp>
+        exp: Exp
     },
     Array {
         init_vals: Vec<Box<InitVal>>
@@ -72,12 +72,12 @@ pub enum InitVal
 pub enum DeclEntry {
     Scalar {
         ident: Ident,
-        init_val: InitVal,
+        init_val: Option<InitVal>,
     },
     Array {
         ident: Ident,
         shape: Vec<Exp>,
-        init_val: InitVal,
+        init_val: Option<InitVal>,
     }
 }
 
@@ -87,7 +87,7 @@ pub enum Decl {
     VarDecl{btype: ValType, var_defs: Vec<DeclEntry>}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Lval
 {
     Ident {
@@ -120,7 +120,7 @@ pub enum BlockItem
 }
 
 /// Ident
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ident {
     pub name: String,
 }

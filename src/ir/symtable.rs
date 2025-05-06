@@ -8,6 +8,7 @@ pub enum VarSymbol
 {
     Variable(Value),
     Constant(i32),
+    Array(Value),
 }
 
 #[derive(Debug, Clone, Copy)]

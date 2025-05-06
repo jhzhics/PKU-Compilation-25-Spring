@@ -163,7 +163,7 @@ ConstExp: Exp = {
 };
 
 ConstInitVal: InitVal = {
-  <const_exp: ConstExp> => InitVal::Scalar { init_val: Some(const_exp) },
+  <const_exp: ConstExp> => InitVal::Scalar { exp: const_exp },
   "{" "}" => InitVal::Array {
     init_vals: vec![]
   },
@@ -181,7 +181,7 @@ ConstInitVal: InitVal = {
 };
 
 InitVal: InitVal = {
-  <init_val: Exp> => InitVal::Scalar { init_val: Some(init_val) },
+  <exp: Exp> => InitVal::Scalar { exp: exp },
   "{" "}" => InitVal::Array {
     init_vals: vec![]
   },
@@ -201,35 +201,33 @@ InitVal: InitVal = {
 ConstDef: DeclEntry = {
   <ident: Ident> "=" <init_val: ConstInitVal> => DeclEntry::Scalar {
     ident,
-    init_val
+    init_val: Some(init_val)
   },
   <ident: Ident> "[" <const_exp: ConstExp> "]" "=" <init_val: ConstInitVal> => DeclEntry::Array {
     ident,
     shape: vec![const_exp],
-    init_val
+    init_val: Some(init_val)
   }
 };
 
 VarDef: DeclEntry = {
   <ident: Ident> "=" <init_val: InitVal> => DeclEntry::Scalar {
     ident,
-    init_val
+    init_val: Some(init_val)
   },
   <ident: Ident> => DeclEntry::Scalar {
     ident,
-    init_val: InitVal::Scalar { init_val: None }
+    init_val: None
   },
   <ident: Ident> "[" <const_exp: ConstExp> "]" "=" <init_val: InitVal> => DeclEntry::Array {
     ident,
     shape: vec![const_exp],
-    init_val
+    init_val: Some(init_val)
   },
   <ident: Ident> "[" <const_exp: ConstExp> "]" => DeclEntry::Array {
     ident,
     shape: vec![const_exp],
-    init_val: InitVal::Array {
-      init_vals: vec![]
-    }
+    init_val: None
   }
 };
 
