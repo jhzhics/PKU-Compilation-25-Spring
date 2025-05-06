@@ -13,6 +13,8 @@ lazy_static! {
     ]));
 
     static ref GLOBAL_LABEL_MAP: Mutex<HashMap<BasicBlock, String>> = Mutex::new(HashMap::new());
+
+    static ref GLOBAL_TEMP_NUM: Mutex<usize> = Mutex::new(0);
 }
 
 fn get_new_reg() -> Option<String> {
@@ -51,4 +53,11 @@ pub fn alloc_label(bb: &BasicBlock) -> String {
 pub fn get_label(bb: &BasicBlock) -> Option<String> {
     let global_label_map = GLOBAL_LABEL_MAP.lock().unwrap();
     global_label_map.get(bb).cloned()
+}
+
+pub fn alloc_tmp_label() -> String {
+    let mut global_temp_num = GLOBAL_TEMP_NUM.lock().unwrap();
+    let num = *global_temp_num;
+    *global_temp_num += 1;
+    format!("L_{}", num)
 }

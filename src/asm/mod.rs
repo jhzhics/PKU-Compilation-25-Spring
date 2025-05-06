@@ -531,12 +531,15 @@ impl GenerateIns for Value {
 
             ValueKind::Branch(ins) =>
             {
+                let temp_true_label = backend::alloc_tmp_label();
                 let cond = ins.cond().get_load_reg(asm, context, func_state);
                 let true_label = backend::get_label(&ins.true_bb()).expect("The label is not allocated");
                 let false_label = backend::get_label(&ins.false_bb()).expect("The label is not allocated");
-                asm.push_back(format!("bnez {}, {}", cond, true_label));
+                asm.push_back(format!("bnez {}, {}", cond, temp_true_label));
                 ins.cond().remove_reg(asm, context, func_state);
                 asm.push_back(format!("j {}", false_label));
+                asm.push_back(format!("{}:", temp_true_label));
+                asm.push_back(format!("j {}", true_label));
             },
 
             ValueKind::Call(ins) =>
