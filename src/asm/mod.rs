@@ -80,13 +80,15 @@ impl Context<'_> {
 fn generate_dataseg(asm: &mut LinkedList<String>, prog: &Program) {
     fn generate_initdata(asm: &mut LinkedList<String>, value_data: &ValueData, prog: &Program)
     {
+        let type_size = value_data.ty().size();
         match value_data.kind() {
             ValueKind::Integer(ins) => {
+                assert!(type_size == 4);
                 let val = ins.value();
                 asm.push_back(format!(".word {}", val));
             },
             ValueKind::ZeroInit(ins) => {
-                asm.push_back(format!(".zero 4"));  
+                asm.push_back(format!(".zero {}", type_size));  
             },
             ValueKind::Aggregate(ins) => {
                 for value in ins.elems()
@@ -101,13 +103,13 @@ fn generate_dataseg(asm: &mut LinkedList<String>, prog: &Program) {
 
     asm.push_back(format!(".data"));
     for (value, value_data) in prog.borrow_values().iter() {
-        
+
         if let ValueKind::GlobalAlloc(ins) = value_data.kind() {
             let name =  &value_data.name().as_ref().expect("The global alloc does not have a name")[1..];
             asm.push_back(format!(".globl {}", name));
             asm.push_back(format!("{}:", name));
             let init_value = prog.borrow_value(ins.init());
-            generate_initdata(asm, &init_value, prog);
+            generate_initdata(asm, &init_value, prog,);
             asm.push_back(String::new());
         }
     }
@@ -564,26 +566,39 @@ impl GenerateIns for Value {
 
             ValueKind::GetElemPtr(ins) =>
             {
-                let base = ins.src();
-                let base_reg = base.get_load_reg(asm, context, func_state);
+                let src = ins.src();
+                let src_reg = src.get_load_reg(asm, context, func_state);
                 let reg = backend::alloc_ins_reg(self);
                 let index = ins.index();
                 let offset_reg = index.get_load_reg(asm, context, func_state);
-                let elem_size = if base.is_global()
+                let elem_size = 
                 {
-                    let base_data = context.program().borrow_value(base);
-                    base_data.ty().size() as i32
-                }
-                else
-                {
-                    context.dfg().value(base).ty().size() as i32
+                    let ty = if src.is_global()
+                    {
+                        context.program().borrow_value(src).ty().clone()
+                    }
+                    else
+                    {
+                        context.dfg().value(src).ty().clone()
+                    };
+                    match ty.kind() {
+                        TypeKind::Pointer(t) =>
+                        {
+                            if let TypeKind::Array(t, _) = t.kind() {
+                                t.size()
+                            } else {
+                                panic!("The src of get_elem_ptr is not a pointer to an array")
+                            }
+                        }
+                        _ => panic!("The src of get_elem_ptr is not a pointer to an array"),
+                    }
                 };
                 asm.push_back(format!("li {}, {}", reg, elem_size));
                 asm.push_back(format!("mul {}, {}, {}", offset_reg, offset_reg, reg));
-                asm.push_back(format!("add {}, {}, {}", reg, base_reg, offset_reg));
+                asm.push_back(format!("add {}, {}, {}", reg, src_reg, offset_reg));
                 store_word(asm, reg.as_str(), func_state.get_offset(self.clone()));
                 
-                base.remove_reg(asm, context, func_state);
+                src.remove_reg(asm, context, func_state);
                 index.remove_reg(asm, context, func_state);
                 backend::remove_reg(self);
             },
@@ -593,14 +608,20 @@ impl GenerateIns for Value {
                 let reg = backend::alloc_ins_reg(self);
                 let base_reg = base.get_load_reg(asm, context, func_state);
                 let index_reg = ins.index().get_load_reg(asm, context, func_state);
-                let elem_size = if base.is_global()
+                let elem_size = 
                 {
-                    let base_data = context.program().borrow_value(base);
-                    base_data.ty().size() as i32
-                }
-                else
-                {
-                    context.dfg().value(base).ty().size() as i32
+                    let ty = if base.is_global()
+                    {
+                        context.program().borrow_value(base).ty().clone()
+                    }
+                    else
+                    {
+                        context.dfg().value(base).ty().clone()
+                    };
+                    match ty.kind() {
+                        TypeKind::Pointer(t) => t.size(),
+                        _ => panic!("The src of get_ptr is not a pointer"),
+                    }
                 };
                 asm.push_back(format!("li {}, {}", reg, elem_size));
                 asm.push_back(format!("mul {}, {}, {}", reg, index_reg, reg));
