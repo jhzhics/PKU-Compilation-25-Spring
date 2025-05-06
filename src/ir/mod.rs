@@ -267,18 +267,20 @@ impl CompUnit {
                                     let constant: i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
                                     constant as usize
                                 }).collect::<Vec<_>>();
+                                let size = shape.iter().fold(1, |acc, x| acc * x);
                                 let init_val = if let Some(init_val) = init_val {
-                                    init_val.adapt_to_shape(&shape);
+                                    let init_val = init_val.adapt_to_shape(&shape);
                                     let init_val = init_val.get_const_vals();
                                     let init_val = init_val.into_iter().map(|x| {
                                         let value = program.new_value().integer(x);
                                         program.new_value().integer(x);
                                         value
                                     }).collect::<Vec<_>>();
-                                    program.new_value().aggregate(init_val)
+                                    aggregate_to_shape(init_val, &shape, program)
                                 } else {
                                     let type_ = get_type_of_array(&shape, btype.into());
-                                    program.new_value().zero_init(type_)
+                                    let init_vals = vec![program.new_value().zero_init(type_); size];
+                                    aggregate_to_shape(init_vals, &shape, program)
                                 };
                                 let array_value = program.new_value().global_alloc(init_val);
                                 program.set_value_name(array_value, Some(format!("@{}", ident.name)));
@@ -524,25 +526,26 @@ impl InitVal {
         agg_shape: &[usize], mut aligned_idx: usize, shape: &[usize],
         mut i: usize)
     {
-        let carry = |aligned_idx: &mut usize, index: &mut Vec<usize>|
+        let carry = |aligned_idx: &mut usize, indices: &mut Vec<usize>,
+        shape: &[usize]|
         {
-            for i in shape.len()-1..=0
+            for j in (0..shape.len()).rev()
             {
-                if index[i] == shape[i]
+                if indices[j] == shape[j]
                 {
-                    index[i] = 0;
-                    if i > 0
+                    indices[j] = 0;
+                    if j > 0
                     {
-                        index[i-1] += 1;
+                        indices[j-1] += 1;
                     }
                 }
             }
             *aligned_idx = 1;
-            for i in shape.len()-1..=0
+            for j in (0..shape.len()).rev()
             {
-                if index[i] != 0
+                if indices[j] != 0
                 {
-                    *aligned_idx = i + 1;
+                    *aligned_idx = j + 1;
                     break;
                 }
             }
@@ -557,7 +560,7 @@ impl InitVal {
                         v[i] = init_val.deref().clone();
                         let back_pos = index.len() - 1;
                         i += 1; index[back_pos] += 1;
-                        carry(&mut aligned_idx, &mut index);
+                        carry(&mut aligned_idx, &mut index, shape);
                     },
                     InitVal::Array { .. } => {
                         assert!(aligned_idx != agg_shape.len()-1, "Initialization of array is not aligned");
@@ -566,7 +569,7 @@ impl InitVal {
                         init_val.__adapt_to_shape(&mut v[i..i+new_size], new_index, &agg_shape[aligned_idx..], 1,
                         &shape[aligned_idx..], 0);
                         i += new_size; index[aligned_idx - 1] += 1;
-                        carry(&mut aligned_idx, &mut index);
+                        carry(&mut aligned_idx, &mut index, shape);
                     }
                 }
             }
