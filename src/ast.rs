@@ -95,7 +95,7 @@ pub enum Lval
     },
     Array {
         ident: Ident,
-        index: Vec<Exp>,
+        indices: Vec<Exp>,
     }
 }
 

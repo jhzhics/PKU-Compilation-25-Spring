@@ -64,8 +64,8 @@ fn excute_koopa(
     istream.read_to_string(&mut input)?;
 
     let ast = sysy::CompUnitParser::new().parse(&input).expect("Expect to be a correct SysY Program");
-    // println!("AST:\n{:#?}", ast);
-    let koopa_program = ir::build_koopa(ast);
-    koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;
+    println!("AST:\n{:#?}", ast);
+    // let koopa_program = ir::build_koopa(ast);
+    // koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;
     Ok(())
 }

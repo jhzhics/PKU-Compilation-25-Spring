@@ -323,7 +323,7 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Lval {
     -> koopa_ir::Value {
         match self {
             Lval::Ident { ident } => ident.koopa_append(func_data, context, state),
-            Lval::Array { ident, index } => {
+            Lval::Array { ident, indices: index } => {
                 let mut value = ident.koopa_append(func_data, context, state);
                 for idx in index.iter()
                 {
@@ -356,7 +356,7 @@ impl Lval {
                     panic!("Use other ident as a variable");
                 }
             },
-            Lval::Array { ident, index } => {
+            Lval::Array { ident, indices: index } => {
                 let entry = symtable::get(&ident.name).expect("Use a symbol that is not declared");
                 let mut value = if let SymValue::VarSymbol(value) = entry
                 {
@@ -679,7 +679,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                             assert!(init_vals.len() == size, "Array size mismatch");
                             let lval = Lval::Array{
                                 ident: ident.clone(),
-                                index: vec![Exp::Number { value: Number { value: 0 } }; shape.len()]
+                                indices: vec![Exp::Number { value: Number { value: 0 } }; shape.len()]
                             };
                             let mut addr_value = lval.addr_koopa_append(func_data, context, state);
                             let one_value = func_data.dfg_mut().new_value().integer(1);
@@ -736,7 +736,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                                 assert!(init_vals.len() == size, "Array size mismatch");
                                 let lval = Lval::Array{
                                     ident: ident.clone(),
-                                    index: vec![Exp::Number { value: Number { value: 0 } }; shape.len()]
+                                    indices: vec![Exp::Number { value: Number { value: 0 } }; shape.len()]
                                 };
                                 let mut addr_value = lval.addr_koopa_append(func_data, context, state);
                                 let one_value = func_data.dfg_mut().new_value().integer(1);
