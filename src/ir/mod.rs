@@ -566,7 +566,6 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                 if let SymValue::Function(func) = symtable::get(ident.name.as_str()).expect("Call a function that is not declared")
                 {
                     let args = args.iter().map(|arg| arg.koopa_append(func_data, context, state)).collect::<Vec<_>>();
-                    println!("call func: {:?}", self);
                     let value = func_data.dfg_mut().new_value().call(func, args);
                     state.ints_list.push_back(value);
                     value
