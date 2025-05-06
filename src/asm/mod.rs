@@ -1,11 +1,14 @@
 mod backend;
-use koopa::{back, ir::{dfg::DataFlowGraph, *}, ir::layout::Layout};
-use std::{clone, collections::{ HashMap, LinkedList }, fmt::format, i32::MAX, os::linux::raw::stat};
+use koopa::{back, ir::{dfg::DataFlowGraph, entities::ValueData, layout::Layout, *}};
+use core::{alloc, panic};
+use std::{cell::RefCell, clone, collections::{ HashMap, LinkedList }, fmt::format, i32::MAX, ops::{Deref, Index}, os::linux::raw::stat};
 
 static GLOB_MAX_OFFSET: i32 = (1 << 11) - 1;
 static GLOB_MIN_OFFSET: i32 = -(1 << 11);
 
 pub fn compile(prog: Program) -> String {
+    Type::set_ptr_size(4);
+
     let mut inst_list: LinkedList<String> = LinkedList::<String>::new();
     generate_dataseg(&mut inst_list, &prog);
 
@@ -38,6 +41,7 @@ struct State {
     sp_offset: HashMap<Value, i32>,
     save_ra: bool,
     padding_args: i32,
+    stack_size: usize,
 }
 
 struct Context<'a> {
@@ -71,7 +75,30 @@ impl Context<'_> {
     }
 }
 
+
+
 fn generate_dataseg(asm: &mut LinkedList<String>, prog: &Program) {
+    fn generate_initdata(asm: &mut LinkedList<String>, value_data: &ValueData, prog: &Program)
+    {
+        match value_data.kind() {
+            ValueKind::Integer(ins) => {
+                let val = ins.value();
+                asm.push_back(format!(".word {}", val));
+            },
+            ValueKind::ZeroInit(ins) => {
+                asm.push_back(format!(".zero 4"));  
+            },
+            ValueKind::Aggregate(ins) => {
+                for value in ins.elems()
+                {
+                    let value_data = prog.borrow_value(*value);
+                    generate_initdata(asm, &value_data, prog);
+                }       
+            },
+            _ => panic!("Not Implemented for value type {:#?}", value_data.kind())
+        }
+    }
+
     asm.push_back(format!(".data"));
     for (value, value_data) in prog.borrow_values().iter() {
         
@@ -80,16 +107,7 @@ fn generate_dataseg(asm: &mut LinkedList<String>, prog: &Program) {
             asm.push_back(format!(".globl {}", name));
             asm.push_back(format!("{}:", name));
             let init_value = prog.borrow_value(ins.init());
-            match init_value.kind() {
-                ValueKind::Integer(ins) => {
-                    let val = ins.value();
-                    asm.push_back(format!(".word {}", val));
-                },
-                ValueKind::ZeroInit(ins) => {
-                    asm.push_back(format!(".zero 4"));  
-                },
-                _ => panic!("Not Implemented for value type {:#?}", init_value.kind())
-            }
+            generate_initdata(asm, &init_value, prog);
             asm.push_back(String::new());
         }
     }
@@ -102,6 +120,7 @@ impl State {
             sp_offset: HashMap::new(),
             save_ra: false,
             padding_args: 0,
+            stack_size: 0,
         };
         for (&bb, node) in func_data.layout().bbs() {
             node.insts().iter().for_each(|(&value, _)|
@@ -113,6 +132,7 @@ impl State {
                 }
             })
         }
+        state.stack_size = 4 * state.padding_args as usize;
         for (&bb, node) in func_data.layout().bbs() {
             backend::alloc_label(&bb);
             node.insts().iter().for_each(|(&value, _)|
@@ -121,32 +141,39 @@ impl State {
                 if !value_data.ty().is_unit()
                 {
                     state.allocate(value);
+
+                    if let ValueKind::Alloc(ins) = value_data.kind() {
+                        let alloc_size = match value_data.ty().kind() {
+                            TypeKind::Array(t, _) => t.size() as usize,
+                            TypeKind::Int32 => 4,
+                            TypeKind::Pointer(t) => t.size() as usize,
+                            _ => panic!("Not Implemented for value type"),
+                        };
+                        state.stack_size += alloc_size as usize;
+                    }
+                    else {
+                        state.stack_size += value_data.ty().size() as usize;
+                    }
+                    
                 }
             });
         }
+        if state.save_ra
+        {
+            state.stack_size += 4;
+        }
+        state.stack_size = (state.stack_size + 15) / 16 * 16;
         state
     }
 
     fn get_stackframe_size(&self) -> usize
     {
-        let mut size = 4 * self.sp_offset.len();
-        if self.save_ra
-        {
-            size += 4;
-        }
-        if self.padding_args > 0
-        {
-            size += 4 * self.padding_args as usize;
-        }
-
-        size = (size + 15) / 16 * 16; // Align to 16 bytes
-        size
+        self.stack_size
     }
 
     fn allocate(&mut self ,value: Value)
     {
-        let offset: i32 = 4 * (self.sp_offset.len() as i32 +  self.padding_args);
-        self.sp_offset.insert(value, offset);
+        self.sp_offset.insert(value, self.stack_size as i32);
     }
 
     fn get_offset(&self, value: Value) -> i32
@@ -256,18 +283,20 @@ impl InstReg for Value {
             ValueKind::Integer(ins) =>
             {
                 let val = ins.value();
-                if val == 0
-                {
-                    "x0".to_string()
-                }
-                else {
-                    let reg = backend::alloc_ins_reg(self);
-                    asm.push_back(format!("li {}, {}", reg, val.to_string()));
-                    reg
-                }
+                let reg = backend::alloc_ins_reg(self);
+                asm.push_back(format!("li {}, {}", reg, val.to_string()));
+                reg
+
             },
             ValueKind::Load(_) => default_getreg(asm),
-            ValueKind::Alloc(_) => default_getreg(asm),
+            ValueKind::Alloc(_) => 
+            {
+                let reg = backend::alloc_ins_reg(self);
+                let offset = func_state.get_offset(self.clone());
+                asm.push_back(format!("li {}, {}", reg, offset));
+                asm.push_back(format!("add {}, {}, sp", reg, reg));
+                reg
+            },
             ValueKind::FuncArgRef(ins) =>
             {
                 if ins.index() < 8
@@ -294,9 +323,10 @@ impl InstReg for Value {
                 let name = &value_data.name().as_ref().expect("The global alloc does not have a name")[1..];
                 let reg = backend::alloc_ins_reg(self);
                 asm.push_back(format!("la {}, {}", reg, name));
-                asm.push_back(format!("lw {}, 0({})", reg, reg));
                 reg
             },
+            ValueKind::GetElemPtr(ins) => default_getreg(asm),
+            ValueKind::GetPtr(ins) => default_getreg(asm),
             other => panic!("Not Implemented for value type {:#?}", other),
         }
     }
@@ -318,8 +348,7 @@ impl InstReg for Value {
             ValueKind::Binary(_) => default_remove_reg(),
             ValueKind::Integer(ins) =>
             {
-                let val = ins.value();
-                if val != 0 {default_remove_reg()}
+                default_remove_reg();
             },
             ValueKind::Load(_) => default_remove_reg(),
             ValueKind::Alloc(_) => default_remove_reg(),
@@ -335,10 +364,9 @@ impl InstReg for Value {
                 assert!(!context.dfg().value(*self).ty().is_unit());
                 default_remove_reg();
             },
-            ValueKind::GlobalAlloc(ins) =>
-            {
-                default_remove_reg();
-            },
+            ValueKind::GlobalAlloc(ins) => default_remove_reg(),
+            ValueKind::GetElemPtr(ins) => default_remove_reg(),
+            ValueKind::GetPtr(ins) => default_remove_reg(),
             other => panic!("Not Implemented for value type {:#?}", other),
         }
     }
@@ -471,31 +499,23 @@ impl GenerateIns for Value {
             {
                 let value = ins.value();
                 let dest = ins.dest();
-                if dest.is_global()
-                {
-                    let dest_data = context.program().borrow_value(dest);
-                    let name = &dest_data.name().as_ref().expect("The global alloc does not have a name")[1..];
-                    let value_reg: String = value.get_load_reg(asm, context, func_state);
-                    let dest_reg = backend::alloc_ins_reg(&dest);
-                    asm.push_back(format!("la {}, {}", dest_reg, name));
-                    asm.push_back(format!("sw {}, 0({})", value_reg, dest_reg));
-                    value.remove_reg(asm, context, func_state);
-                    backend::remove_reg(&dest);
-                }
-                else {
-                    let value_reg = value.get_load_reg(asm, context, func_state);
-                    let offset = func_state.get_offset(ins.dest());
-                    store_word(asm, value_reg.as_str(), offset);
-                    value.remove_reg(asm, context, func_state);
-                }
+                let value_reg = value.get_load_reg(asm, context, func_state);
+                let dest_reg = dest.get_load_reg(asm, context, func_state);
+                asm.push_back(format!("sw {}, ({})", value_reg, dest_reg));
+
+                value.remove_reg(asm, context, func_state);
+                dest.remove_reg(asm, context, func_state);
             },
 
             ValueKind::Load(ins) =>
             {
-                let reg = ins.src().get_load_reg(asm, context, func_state);
+                let reg = backend::alloc_ins_reg(self);
+                let src_reg = ins.src().get_load_reg(asm, context, func_state);
+                asm.push_back(format!("lw {}, ({})", reg, src_reg));
                 let offset = func_state.get_offset(self.clone());
                 store_word(asm, reg.as_str(), offset);
                 ins.src().remove_reg(asm, context, func_state);
+                backend::remove_reg(self);
             }
 
             ValueKind::Alloc(_) => (),
@@ -540,6 +560,55 @@ impl GenerateIns for Value {
                     store_word(asm, "a0", func_state.get_offset(self.clone()));
                 }
                     
+            },
+
+            ValueKind::GetElemPtr(ins) =>
+            {
+                let base = ins.src();
+                let base_reg = base.get_load_reg(asm, context, func_state);
+                let reg = backend::alloc_ins_reg(self);
+                let index = ins.index();
+                let offset_reg = index.get_load_reg(asm, context, func_state);
+                let elem_size = if base.is_global()
+                {
+                    let base_data = context.program().borrow_value(base);
+                    base_data.ty().size() as i32
+                }
+                else
+                {
+                    context.dfg().value(base).ty().size() as i32
+                };
+                asm.push_back(format!("li {}, {}", reg, elem_size));
+                asm.push_back(format!("mul {}, {}, {}", offset_reg, offset_reg, reg));
+                asm.push_back(format!("add {}, {}, {}", reg, base_reg, offset_reg));
+                store_word(asm, reg.as_str(), func_state.get_offset(self.clone()));
+                
+                base.remove_reg(asm, context, func_state);
+                index.remove_reg(asm, context, func_state);
+                backend::remove_reg(self);
+            },
+            ValueKind::GetPtr(ins) =>
+            {
+                let base = ins.src();
+                let reg = backend::alloc_ins_reg(self);
+                let base_reg = base.get_load_reg(asm, context, func_state);
+                let index_reg = ins.index().get_load_reg(asm, context, func_state);
+                let elem_size = if base.is_global()
+                {
+                    let base_data = context.program().borrow_value(base);
+                    base_data.ty().size() as i32
+                }
+                else
+                {
+                    context.dfg().value(base).ty().size() as i32
+                };
+                asm.push_back(format!("li {}, {}", reg, elem_size));
+                asm.push_back(format!("mul {}, {}, {}", reg, index_reg, reg));
+                asm.push_back(format!("add {}, {}, {}", reg, base_reg, reg));
+                store_word(asm, reg.as_str(), func_state.get_offset(self.clone()));
+                ins.index().remove_reg(asm, context, func_state);
+                base.remove_reg(asm, context, func_state);
+                backend::remove_reg(self);
             },
             other => panic!("Not Implemented for value type {:#?}", other)
         }

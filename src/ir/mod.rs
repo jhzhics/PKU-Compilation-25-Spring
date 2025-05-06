@@ -235,7 +235,7 @@ impl CompUnit {
                                 }).collect::<Vec<_>>();
                                 let value = aggregate_to_shape(init_val, &shape, program);
                                 let array_value = program.new_value().global_alloc(value);
-
+                                program.set_value_name(value, Some(format!("@{}", ident.name)));
                                 symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value)));
                             }
                         }
@@ -259,6 +259,7 @@ impl CompUnit {
                                     panic!("VarDecl expect a scalar value");
                                 };
                                 let var = program.new_value().global_alloc(init_val);
+                                program.set_value_name(var, Some(format!("@{}", ident.name)));
                                 symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(var)));
                             },
                             DeclEntry::Array { ident, shape, init_val } => {
@@ -280,6 +281,7 @@ impl CompUnit {
                                     program.new_value().zero_init(type_)
                                 };
                                 let array_value = program.new_value().global_alloc(init_val);
+                                program.set_value_name(array_value, Some(format!("@{}", ident.name)));
                                 symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value)));   
                             }
                         }
