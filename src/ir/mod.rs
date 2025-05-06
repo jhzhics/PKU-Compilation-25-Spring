@@ -309,7 +309,6 @@ impl CompUnit {
                                     let constant: i32 = exp.try_into().expect("ConstDecl expect a const value at compile time");
                                     constant as usize
                                 }).collect::<Vec<_>>();
-                                let size = shape.iter().fold(1, |acc, x| acc * x);
                                 let init_val = if let Some(init_val) = init_val {
                                     let init_val = init_val.adapt_to_shape(&shape);
                                     let init_val = init_val.get_const_vals();
@@ -777,18 +776,15 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                                 ident: ident.clone(),
                                 indices: vec![Exp::Number { value: Number { value: 0 } }; shape.len()]
                             };
-                            let mut addr_value = lval.addr_koopa_append(func_data, context, state);
-                            let one_value = func_data.dfg_mut().new_value().integer(1);
+                            let addr_value = lval.addr_koopa_append(func_data, context, state);
+                            
                             for i in 0..size
                             {
                                 let value = func_data.dfg_mut().new_value().integer(init_vals[i]);
-                                let store_value = func_data.dfg_mut().new_value().store(value, addr_value);
-                                state.ints_list.push_back(store_value);
-                                if i != size - 1
-                                {
-                                    addr_value = func_data.dfg_mut().new_value().get_ptr(addr_value, one_value);
-                                    state.ints_list.push_back(addr_value);
-                                }
+                                let index_value = func_data.dfg_mut().new_value().integer(i as i32);
+                                let pos_value = func_data.dfg_mut().new_value().get_ptr(addr_value, index_value);
+                                let store_value = func_data.dfg_mut().new_value().store(value, pos_value);
+                                state.ints_list.extend([pos_value, store_value]);
                             }
                         }
                     }
@@ -833,18 +829,16 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                                     ident: ident.clone(),
                                     indices: vec![Exp::Number { value: Number { value: 0 } }; shape.len()]
                                 };
-                                let mut addr_value = lval.addr_koopa_append(func_data, context, state);
-                                let one_value = func_data.dfg_mut().new_value().integer(1);
+                                let addr_value = lval.addr_koopa_append(func_data, context, state);
+                            
                                 for i in 0..size
                                 {
-                                    let store_value = func_data.dfg_mut().new_value().store(init_vals[i], addr_value);
-                                    state.ints_list.push_back(store_value);
-                                    if i != size - 1
-                                    {
-                                        addr_value = func_data.dfg_mut().new_value().get_ptr(addr_value, one_value);
-                                        state.ints_list.push_back(addr_value);
-                                    }
-                                } 
+                                    let value = init_vals[i];
+                                    let index_value = func_data.dfg_mut().new_value().integer(i as i32);
+                                    let pos_value = func_data.dfg_mut().new_value().get_ptr(addr_value, index_value);
+                                    let store_value = func_data.dfg_mut().new_value().store(value, pos_value);
+                                    state.ints_list.extend([pos_value, store_value]);
+                                }
                             }
                         }
                     }
