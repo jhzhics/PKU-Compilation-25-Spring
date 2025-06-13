@@ -2,6 +2,7 @@ mod asm;
 mod ast;
 mod cli;
 mod ir;
+mod perf;
 use cli::Cli;
 
 use lalrpop_util::lalrpop_mod;
@@ -33,7 +34,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.mode {
         cli::Mode::Koopa => excute_koopa(istream.as_mut(), ostream.as_mut()),
-        cli::Mode::Riscv | cli::Mode::Perf => excute_riscv(istream.as_mut(), ostream.as_mut())
+        cli::Mode::Riscv => excute_riscv(istream.as_mut(), ostream.as_mut()),
+        cli::Mode::Perf => excute_perf(istream.as_mut(), ostream.as_mut()),
     }
 }
 
@@ -64,5 +66,21 @@ fn excute_koopa(
     // println!("AST:\n{:#?}", ast);
     let koopa_program = ir::build_koopa(ast);
     koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;
+    Ok(())
+}
+
+fn excute_perf(
+    istream: &mut dyn Read,
+    ostream: &mut dyn Write,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = String::new();
+    istream.read_to_string(&mut input)?;
+
+    let ast = sysy::CompUnitParser::new().parse(&input).unwrap();
+    let koopa_program = ir::build_koopa(ast);
+
+    let compiled = perf::compile(koopa_program);
+    ostream.write(compiled.as_bytes())?;
+    ostream.flush()?;
     Ok(())
 }
