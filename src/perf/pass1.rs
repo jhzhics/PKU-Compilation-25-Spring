@@ -91,7 +91,7 @@ impl Pass1State {
             {
                 *idx += 1;
             }
-            format!("k{}_{}", &var[1..], idx)
+            format!("k{}", &var[1..])
         } else {
             format!("k{}", &var[1..])
         }
@@ -447,6 +447,7 @@ impl Pass1Append for Value  {
                     .collect();
                 
                 let func = ins.callee();
+                
                 let func_name = context.program.func(func).name();
                 if value_data.ty().is_unit()
                 {
