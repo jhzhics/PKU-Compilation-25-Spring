@@ -1,13 +1,13 @@
-use std::{collections::LinkedList, fmt::Display};
+use std::{collections::{HashSet, LinkedList}, fmt::Display};
 
 use super::riscv::{Block};
 
 #[derive(Debug, Clone)]
 pub struct SSABlock {
     pub block: Block,
-    pub prev: Vec<(String, Vec<String>)>, // (name, operands)
+    pub prev: Vec<String>, // (name, operands)
     pub next: Vec<(String, Vec<String>)>, // (name, operands) 
-    pub params: Vec<String>, // parameters
+    pub params: HashSet<String>, // parameters
 }
 
 impl SSABlock {
@@ -18,14 +18,14 @@ impl SSABlock {
             block: Block::new(name),
             prev: Vec::new(),
             next: Vec::new(),
-            params: Vec::new(),
+            params: HashSet::new(),
         }
     }
 
     pub fn dump(&self) -> LinkedList<String> {
         let mut inst_list = self.block.dump();
         inst_list.pop_front(); // Remove the block name line
-        inst_list.push_front(format!("{}({}):", self.block.name, self.params.join(", ")));
+        inst_list.push_front(format!("{}({}):", self.block.name, self.params.iter().cloned().collect::<Vec<String>>().join(", ")));
         inst_list.push_back(format!("# {}",
         self.next.iter()
             .map(|(name, ops)| format!("{}({})", name, ops.join(", ")))

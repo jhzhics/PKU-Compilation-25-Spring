@@ -5,7 +5,6 @@ This is a course project at Peking University.
 # Optimation Passes
 1. Generate basic SSA form for each basic block.
     - Use a virtual register for each local alloc i32
-    - Do local variable numbering for each assignment in the block
     - There kinds of virtual registers are left:
         1. k_{}: local variable
         2. t_{}: temporary variable
