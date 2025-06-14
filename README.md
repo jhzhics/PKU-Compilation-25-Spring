@@ -15,6 +15,9 @@ This is a course project at Peking University.
     - Use `la` to load all global addresses at the beginning of the function
 
 2. Generate global SSA form by active varaibles analysis across basic blocks.
+    - Use a 2-pass approach.
+        1. Do active variable scan for each basic block
+        2. Do block parameter elimination until it converges
 3. Do constant propagation and folding and dead code elimination using DAG on SSA block
 
 ## Material

@@ -1,10 +1,10 @@
-use std::collections::LinkedList;
+use std::{collections::LinkedList, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub struct Instr
 {
-    op: String,
-    operands: Vec<String>,
+    pub op: String,
+    pub operands: Vec<String>,
 }
 
 impl Instr {
@@ -29,6 +29,13 @@ impl Instr {
             operands,
         }
     }
+}
+
+impl Display for Instr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.op, self.operands.join(", "))
+    }
+    
 }
 
 #[derive(Debug, Clone)]

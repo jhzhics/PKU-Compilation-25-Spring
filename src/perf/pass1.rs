@@ -1,7 +1,7 @@
 //! In phase 1, we will convert koopa IR form into a basic SSA form (not exactly SSA) using infinite registers.
 //! We use some pesudo instructions, these pesudo instructions will begin with Capital letters.
 
-use std::{collections::{HashMap, HashSet, LinkedList}, os::linux::raw::stat};
+use std::{collections::{HashMap, HashSet, LinkedList}};
 use koopa::ir::{BinaryOp, FunctionData, TypeKind, Value, ValueKind};
 
 use crate::perf::{riscv::Instr};
