@@ -1,7 +1,5 @@
 use std::collections::LinkedList;
 
-use koopa::ir::layout::InstList;
-
 #[derive(Debug, Clone)]
 pub struct Instr
 {
@@ -41,11 +39,11 @@ pub struct Block
 }
 
 impl Block {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: String) -> Self {
         assert!(!name.is_empty(), "Block name cannot be empty");
         assert!(!name.contains(' '), "Block name should not contain spaces: {}", name);
         Block {
-            name: name.to_string(),
+            name,
             instrs: Vec::new(),
         }
     }
@@ -54,7 +52,7 @@ impl Block {
         let mut inst_list = LinkedList::new();
         inst_list.push_back(format!("{}:", self.name));
         for instr in &self.instrs {
-            inst_list.push_back(format!("  {} {}\n", instr.op, instr.operands.join(", ")));
+            inst_list.push_back(format!("  {} {}", instr.op, instr.operands.join(", ")));
         }
         inst_list
     }

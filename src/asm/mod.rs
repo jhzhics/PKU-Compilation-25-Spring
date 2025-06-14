@@ -614,7 +614,7 @@ impl GenerateIns for Value {
                 let index_reg = ins.index().get_load_reg(asm, context, func_state);
                 let elem_size = 
                 {
-                    let ty = if base.is_global()
+                    let ty: Type = if base.is_global()
                     {
                         context.program().borrow_value(base).ty().clone()
                     }

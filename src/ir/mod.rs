@@ -9,6 +9,7 @@ use super::ast::{*};
 use std::collections::LinkedList;
 use std::mem;
 use std::ops::Deref;
+use std::os::linux::raw::stat;
 use ::koopa::ir as koopa_ir;
 
 type ValueList = LinkedList<koopa_ir::Value>;
@@ -25,7 +26,8 @@ struct IRContext
 
 struct IRState {
     current_bb: Option<BasicBlock>,
-    pub ints_list: ValueList,
+    pub instrs_list: ValueList,
+    next_idx: usize,
 }
 
 impl Default for IRContext {
@@ -38,7 +40,8 @@ impl Default for IRState {
     fn default() -> Self {
         IRState {
             current_bb: None,
-            ints_list: ValueList::new(),
+            instrs_list: ValueList::new(),
+            next_idx: 0,
         }
     }
 }
@@ -52,11 +55,21 @@ impl IRState
 
     fn finalize(&mut self, func_data: &mut koopa_ir::FunctionData) 
     {
-        if self.ints_list.is_empty() {
+        if self.instrs_list.is_empty() {
             return;
         }
+        let cloned_lists = self.instrs_list.clone();
+        cloned_lists.into_iter().for_each(|instr| {
+            func_data.dfg_mut().set_value_name(instr, self.get_idx());
+        });
         func_data.layout_mut().bb_mut(self.current_bb.expect("Current_bb must be set")).
-        insts_mut().extend(mem::take(&mut self.ints_list));
+        insts_mut().extend(mem::take(&mut self.instrs_list));
+    }
+
+    fn get_idx(&mut self) -> Option<String> {
+        let idx = self.next_idx;
+        self.next_idx += 1;
+        Some(format!("%{}", idx))
     }
 }
 
@@ -186,7 +199,8 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Number {
     fn koopa_append(&self, func_data: &mut koopa_ir::FunctionData, context: IRContext, state: &mut IRState)
      -> koopa_ir::Value
     {
-        func_data.dfg_mut().new_value().integer(self.value)
+        let value = func_data.dfg_mut().new_value().integer(self.value);
+        value
     }
 }
 
@@ -343,22 +357,23 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Ident {
         {
             match value {
                 VarSymbol::Constant(constant) => {
-                    func_data.dfg_mut().new_value().integer(constant)
+                    let value = func_data.dfg_mut().new_value().integer(constant);
+                    value
                 },
                 VarSymbol::Variable(value) => {
                     let load_inst = func_data.dfg_mut().new_value().load(value);
-                    state.ints_list.push_back(load_inst);
+                    state.instrs_list.push_back(load_inst);
                     load_inst
                 },
                 VarSymbol::Array(value, ..) => {
                     let zero = func_data.dfg_mut().new_value().integer(0);
                     let ptr = func_data.dfg_mut().new_value().get_elem_ptr(value, zero);
-                    state.ints_list.push_back(ptr);
+                    state.instrs_list.push_back(ptr);
                     ptr
                 },
                 VarSymbol::Ptr(value, ..) => {
                     let load_inst = func_data.dfg_mut().new_value().load(value);
-                    state.ints_list.push_back(load_inst);
+                    state.instrs_list.push_back(load_inst);
                     load_inst
                 }
             }
@@ -391,7 +406,7 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Lval {
                     {
                         func_data.dfg_mut().new_value().get_elem_ptr(value, idx_value)
                     };
-                    state.ints_list.push_back(value);
+                    state.instrs_list.push_back(value);
                 }
                 let ret_value = if is_load_scaler
                 {
@@ -402,7 +417,7 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Lval {
                     let zero = func_data.dfg_mut().new_value().integer(0);
                     func_data.dfg_mut().new_value().get_elem_ptr(value, zero)
                 };
-                state.ints_list.push_back(ret_value);
+                state.instrs_list.push_back(ret_value);
                 ret_value
             }
         }
@@ -435,13 +450,13 @@ impl Lval {
                         {
                             let zero = func_data.dfg_mut().new_value().integer(0);
                             let ptr = func_data.dfg_mut().new_value().get_elem_ptr(value, zero);
-                            state.ints_list.push_back(ptr);
+                            state.instrs_list.push_back(ptr);
                             ptr
                         },
                         VarSymbol::Ptr(value, ..) => 
                         {
                             let load_inst = func_data.dfg_mut().new_value().load(value);
-                            state.ints_list.push_back(load_inst);
+                            state.instrs_list.push_back(load_inst);
                             load_inst
                         },
                         _ => panic!("Use other ident as a variable"),
@@ -463,7 +478,7 @@ impl Lval {
                     {
                         func_data.dfg_mut().new_value().get_elem_ptr(value, idx_value)
                     };
-                    state.ints_list.push_back(value);
+                    state.instrs_list.push_back(value);
                 }
                 value
             }
@@ -488,7 +503,7 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                 let value = exp.koopa_append(func_data, context, state);
                 let zero = func_data.dfg_mut().new_value().integer(0);
                 let value = func_data.dfg_mut().new_value().binary(unary_op.into(), zero, value);
-                state.ints_list.push_back(value);
+                state.instrs_list.push_back(value);
                 value
             }
             Exp::BinaryExp { binary_op, lhs, rhs } =>
@@ -502,14 +517,14 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                     let lhs_value = lhs.koopa_append(func_data, context, state);
                     let rhs_value = rhs.koopa_append(func_data, context, state);
                     let value = func_data.dfg_mut().new_value().binary(binary_op, lhs_value, rhs_value);
-                    state.ints_list.push_back(value);
+                    state.instrs_list.push_back(value);
                     return value;
                 }
 
                 // Process short-circuit evaluation binary operations
                 let value;
                 let result = func_data.dfg_mut().new_value().alloc(koopa_ir::Type::get_i32());
-                state.ints_list.push_back(result);
+                state.instrs_list.push_back(result);
                 let lhs_value = lhs.koopa_append(func_data, context, state);
                 
                 match &binary_op {
@@ -517,19 +532,19 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                     {
                         let zero = func_data.dfg_mut().new_value().integer(0);
                         let store_zero = func_data.dfg_mut().new_value().store(zero, result);
-                        state.ints_list.push_back(store_zero);
-                        let then_bb = func_data.dfg_mut().new_bb().basic_block(None);
-                        let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                        state.instrs_list.push_back(store_zero);
+                        let then_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
+                        let next_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
                         func_data.layout_mut().bbs_mut().extend([then_bb, next_bb]);
                         let if_value = func_data.dfg_mut().new_value().branch(lhs_value, then_bb, next_bb);
-                        state.ints_list.push_back(if_value);
+                        state.instrs_list.push_back(if_value);
                         state.set_current_bb(then_bb, func_data);
                         let rhs_value = rhs.koopa_append(func_data, IRContext { next_bb: Some(next_bb), ..context }, state);
                         let bool_rhs = func_data.dfg_mut().new_value().binary(koopa_ir::BinaryOp::NotEq, rhs_value, zero);
-                        state.ints_list.push_back(bool_rhs);
+                        state.instrs_list.push_back(bool_rhs);
                         let store_value = func_data.dfg_mut().new_value().store(bool_rhs, result);
                         let jump_value = func_data.dfg_mut().new_value().jump(next_bb);
-                        state.ints_list.extend([store_value, jump_value]);
+                        state.instrs_list.extend([store_value, jump_value]);
                         state.set_current_bb(next_bb, func_data);
                     },
                     BinaryOp::LogicOr =>
@@ -537,28 +552,28 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                         let one = func_data.dfg_mut().new_value().integer(1);
                         let zero = func_data.dfg_mut().new_value().integer(0);
                         let store_one = func_data.dfg_mut().new_value().store(one, result);
-                        state.ints_list.push_back(store_one);
-                        let then_bb = func_data.dfg_mut().new_bb().basic_block(None);
-                        let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                        state.instrs_list.push_back(store_one);
+                        let then_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
+                        let next_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
                         func_data.layout_mut().bbs_mut().extend([then_bb, next_bb]);
                         let cond = func_data.dfg_mut().new_value().binary(koopa_ir::BinaryOp::Eq, lhs_value, zero);
-                        state.ints_list.push_back(cond);
+                        state.instrs_list.push_back(cond);
                         let if_value = func_data.dfg_mut().new_value().branch(cond, then_bb, next_bb);
-                        state.ints_list.push_back(if_value);
+                        state.instrs_list.push_back(if_value);
                         state.set_current_bb(then_bb, func_data);
                         let rhs_value = rhs.koopa_append(func_data, IRContext { next_bb: Some(next_bb), ..context}, state);
                         let bool_rhs = func_data.dfg_mut().new_value().binary(koopa_ir::BinaryOp::NotEq, rhs_value, zero);
-                        state.ints_list.push_back(bool_rhs);
+                        state.instrs_list.push_back(bool_rhs);
                         let store_value = func_data.dfg_mut().new_value().store(bool_rhs, result);
                         let jump_value = func_data.dfg_mut().new_value().jump(next_bb);
-                        state.ints_list.extend([store_value, jump_value]);
+                        state.instrs_list.extend([store_value, jump_value]);
                         state.set_current_bb(next_bb, func_data);
                     },
                     _ => panic!("Binary Op Not expected")
                 };
                 
                 value = func_data.dfg_mut().new_value().load(result);
-                state.ints_list.push_back(value);
+                state.instrs_list.push_back(value);
                 value
             },
             Exp::Call { ident, args } =>
@@ -567,7 +582,7 @@ impl KoopaAppend<koopa_ir::FunctionData, koopa_ir::Value> for Exp {
                 {
                     let args = args.iter().map(|arg| arg.koopa_append(func_data, context, state)).collect::<Vec<_>>();
                     let value = func_data.dfg_mut().new_value().call(func, args);
-                    state.ints_list.push_back(value);
+                    state.instrs_list.push_back(value);
                     value
                 }
                 else {
@@ -769,7 +784,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                             let array_type = get_type_of_array(&shape, btype.into());
                             let array_value = func_data.dfg_mut().new_value().alloc(array_type);
                             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value, shape.len())));
-                            state.ints_list.push_back(array_value);
+                            state.instrs_list.push_back(array_value);
                             let size = shape.iter().fold(1, |acc, x| acc * x);
                             let init_vals = init_val.get_const_vals();
                             assert!(init_vals.len() == size, "Array size mismatch");
@@ -785,7 +800,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                                 let index_value = func_data.dfg_mut().new_value().integer(i as i32);
                                 let pos_value = func_data.dfg_mut().new_value().get_ptr(addr_value, index_value);
                                 let store_value = func_data.dfg_mut().new_value().store(value, pos_value);
-                                state.ints_list.extend([pos_value, store_value]);
+                                state.instrs_list.extend([pos_value, store_value]);
                             }
                         }
                     }
@@ -798,12 +813,12 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                         DeclEntry::Scalar { ident, init_val } => {
                             let var = func_data.dfg_mut().new_value().alloc(btype.into());
                             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Variable(var)));
-                            state.ints_list.push_back(var);
+                            state.instrs_list.push_back(var);
                             if let Some(init_val) = init_val {
                                 if let InitVal::Scalar { exp } = init_val {
                                     let value = exp.koopa_append(func_data, context, state);
                                     let store_value = func_data.dfg_mut().new_value().store(value, var);
-                                    state.ints_list.push_back(store_value);
+                                    state.instrs_list.push_back(store_value);
                                 }
                                 else {
                                     panic!("VarDecl expect a scalar value");
@@ -820,7 +835,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                             let array_type = get_type_of_array(&shape, btype.into());
                             let array_value = func_data.dfg_mut().new_value().alloc(array_type);
                             symtable::insert(ident.name.as_str(), SymValue::VarSymbol(VarSymbol::Array(array_value, shape.len())));
-                            state.ints_list.push_back(array_value);
+                            state.instrs_list.push_back(array_value);
                             if let Some(init_val) = init_val {
                                 let init_val = init_val.adapt_to_shape(&shape);
                                 let size = shape.iter().fold(1, |acc, x| acc * x);
@@ -838,7 +853,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Decl {
                                     let index_value = func_data.dfg_mut().new_value().integer(i as i32);
                                     let pos_value = func_data.dfg_mut().new_value().get_ptr(addr_value, index_value);
                                     let store_value = func_data.dfg_mut().new_value().store(value, pos_value);
-                                    state.ints_list.extend([pos_value, store_value]);
+                                    state.instrs_list.extend([pos_value, store_value]);
                                 }
                             }
                         }
@@ -859,10 +874,10 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                     Some(exp) => {
                         let value = exp.koopa_append(func_data, context, state);
                         let dfg = func_data.dfg_mut();
-                        state.ints_list.push_back(dfg.new_value().ret(Some(value)));
+                        state.instrs_list.push_back(dfg.new_value().ret(Some(value)));
                     }
                     None => {
-                        state.ints_list.push_back(func_data.dfg_mut().new_value().ret(None));
+                        state.instrs_list.push_back(func_data.dfg_mut().new_value().ret(None));
                     }   
                 }
             },
@@ -871,7 +886,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 let addr_value = lval.addr_koopa_append(func_data, context, state);
                 let val  = exp.koopa_append(func_data, context, state);
                 let dfg = func_data.dfg_mut();
-                state.ints_list.push_back(
+                state.instrs_list.push_back(
                     dfg.new_value().store(val, addr_value)
                 );
 
@@ -881,28 +896,28 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
                 if let Some(exp) = exp
                 {
                     let value = exp.koopa_append(func_data, context, state);
-                    state.ints_list.push_back(value);
+                    state.instrs_list.push_back(value);
                 }
             }
             Stmt::If { cond, then_block: then_stmt, else_block: else_stmt } =>
             {
                 let cond_value= cond.koopa_append(func_data, context, state);
-                let then_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                let then_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
                 func_data.layout_mut().bbs_mut().extend([then_bb]);
                 if let Some(else_stmt) = else_stmt
                 {
-                    let else_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                    let else_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
                     func_data.layout_mut().bbs_mut().extend([else_bb]);
 
                     let if_value = func_data.dfg_mut().new_value().branch(cond_value, then_bb, else_bb);
-                    state.ints_list.push_back(if_value);
+                    state.instrs_list.push_back(if_value);
 
                     state.set_current_bb(else_bb, func_data);
                     else_stmt.koopa_append(func_data, context, state);
                 }
                 else {
                     let if_value = func_data.dfg_mut().new_value().branch(cond_value, then_bb, context.next_bb.unwrap());
-                    state.ints_list.push_back(if_value);
+                    state.instrs_list.push_back(if_value);
                 }
 
                 state.set_current_bb(then_bb, func_data);
@@ -910,16 +925,16 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
             },
             Stmt::While { cond, block } =>
             {
-                let cond_bb = func_data.dfg_mut().new_bb().basic_block(None);
-                let body_bb = func_data.dfg_mut().new_bb().basic_block(None);
-                let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                let cond_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
+                let body_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
+                let next_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
                 func_data.layout_mut().bbs_mut().extend([cond_bb, body_bb, next_bb]);
-                state.ints_list.push_back(
+                state.instrs_list.push_back(
                     func_data.dfg_mut().new_value().jump(cond_bb)
                 );
                 state.set_current_bb(cond_bb, func_data);
                 let cond_value = cond.koopa_append(func_data, IRContext { next_bb: Some(next_bb), ..context }, state);
-                state.ints_list.push_back(
+                state.instrs_list.push_back(
                 func_data.dfg_mut().new_value().branch(cond_value, body_bb, next_bb)
                 );
                 state.set_current_bb(body_bb, func_data);
@@ -929,14 +944,14 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Stmt
             Stmt::Break =>
             {
                 let out_bb = context.out_bb.expect("Break out of loop");
-                state.ints_list.push_back(
+                state.instrs_list.push_back(
                     func_data.dfg_mut().new_value().jump(out_bb)
                 );
             }
             Stmt::Continue =>
             {
                 let cond_bb = context.cond_bb.expect("Continue out of loop");
-                state.ints_list.push_back(
+                state.instrs_list.push_back(
                     func_data.dfg_mut().new_value().jump(cond_bb)
                 );
             }
@@ -972,7 +987,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
                 },
                 BlockItem::Stmt {stmt: Stmt::If {..}} =>
                 {
-                    let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                    let next_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
                     func_data.layout_mut().bbs_mut().extend([next_bb]);
                     item.koopa_append(func_data,IRContext {  next_bb: Some(next_bb), ..context }, state);
                     state.set_current_bb(next_bb, func_data);
@@ -980,11 +995,11 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
                 },
                 BlockItem::Stmt {stmt: Stmt::Block {block}} =>
                 {
-                    let block_bb= func_data.dfg_mut().new_bb().basic_block(None);
-                    let next_bb = func_data.dfg_mut().new_bb().basic_block(None);
+                    let block_bb= func_data.dfg_mut().new_bb().basic_block(state.get_idx());
+                    let next_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
                     func_data.layout_mut().bbs_mut().extend([block_bb, next_bb]);
                     let jmp_value = func_data.dfg_mut().new_value().jump(block_bb);
-                    state.ints_list.push_back(jmp_value);
+                    state.instrs_list.push_back(jmp_value);
                     state.set_current_bb(block_bb, func_data);
                     block.koopa_append(func_data, 
                     IRContext { next_bb: Some(next_bb), ..context }, state);
@@ -1010,7 +1025,7 @@ impl KoopaAppend<koopa_ir::FunctionData, ()> for Block {
             if let Some(next_bb) = context.next_bb
             {
                 let jmp_value = func_data.dfg_mut().new_value().jump(next_bb);
-                state.ints_list.push_back(jmp_value);
+                state.instrs_list.push_back(jmp_value);
             }
             else 
             {
@@ -1044,7 +1059,11 @@ impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
         };
         symtable::push_scope();
         let func_data = program.func_mut(func);
-        let entry_bb = func_data.dfg_mut().new_bb().basic_block(None);
+        let param_values = func_data.params().iter().cloned().collect::<Vec<_>>();
+        param_values.into_iter().for_each(|param| {
+            func_data.dfg_mut().set_value_name(param, state.get_idx());
+        });
+        let entry_bb = func_data.dfg_mut().new_bb().basic_block(state.get_idx());
         func_data.layout_mut().bbs_mut().extend([entry_bb]);
         state.set_current_bb(entry_bb, func_data);
         self.params.iter().enumerate().for_each(|(i, param)| {
@@ -1061,7 +1080,7 @@ impl KoopaAppend<koopa_ir::Program, koopa_ir::Function> for FuncDef {
                 SymValue::VarSymbol(VarSymbol::Variable(alloc_value))
             };
             symtable::insert(self.params[i].get_ident().name.as_str(), symvalue);
-            state.ints_list.extend([alloc_value, store_value]);
+            state.instrs_list.extend([alloc_value, store_value]);
         });
         self.block.koopa_append(func_data, 
         IRContext::default(), state);
