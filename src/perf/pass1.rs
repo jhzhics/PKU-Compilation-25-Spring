@@ -1,7 +1,7 @@
-//! In phase 1, we will convert koopa IR form into a basic SSA form using infinite registers.
+//! In phase 1, we will convert koopa IR form into a basic SSA form (not exactly SSA) using infinite registers.
 //! We use some pesudo instructions, these pesudo instructions will begin with Capital letters.
 
-use std::{collections::{HashMap, HashSet, LinkedList}, ops::ControlFlow};
+use std::{collections::{HashMap, HashSet, LinkedList}, os::linux::raw::stat};
 use koopa::ir::{BinaryOp, FunctionData, TypeKind, Value, ValueKind};
 
 use crate::perf::{riscv::Instr};
@@ -21,10 +21,25 @@ impl Pass1Func {
     {
         let mut inst_list: LinkedList<String> = LinkedList::new();
         inst_list.push_back(format!("{}({}):", self.name, self.args.join(", ")));
-        self.blocks.iter().for_each(|(_name, block)| {
+        if let Some(entry) = &self.entry {
+            let engtry_block = self.blocks.get(entry).expect("Entry block should be set for a function");
+            inst_list.extend(engtry_block.block.dump());
+            inst_list.push_back("".to_string());
+
+            self.blocks.iter().for_each(|(name, block)| {
+            if name == entry {
+                return; // Skip the entry block, it has been added already
+            }
             inst_list.extend(block.block.dump());
             inst_list.push_back("".to_string());
         });
+        }
+        else
+        {
+            panic!("Entry should be set for a function");
+        }
+
+
         inst_list
     }
 }
@@ -65,7 +80,7 @@ impl TempAllocator {
 struct Pass1State {
     pub temp_allocator: TempAllocator,
     pub ssa_mem_reg: HashMap<String, usize>,
-    pub ssa_global_reg: HashSet<String>,
+    pub global_vars: HashSet<String>
 }
 
 impl Pass1State {
@@ -80,6 +95,11 @@ impl Pass1State {
         } else {
             format!("k{}", &var[1..])
         }
+    }
+    pub fn enter_new_block(&mut self) {
+        self.ssa_mem_reg.iter_mut().for_each(|(_, idx)| {
+            *idx += 1; // Increment the index for all variables
+        });
     }
 }
 
@@ -125,7 +145,7 @@ pub fn pass1(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func 
     let mut global_state = Pass1State {
         temp_allocator: TempAllocator::new(),
         ssa_mem_reg: HashMap::new(),
-        ssa_global_reg: HashSet::new()
+        global_vars: HashSet::new(),
     };
 
     let mut pass1_func = Pass1Func {
@@ -164,7 +184,21 @@ pub fn pass1(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func 
             instr.append(&context, &mut pass1_block, &mut global_state);
         });
         pass1_func.blocks.insert(pass1_block.block.name.clone(), pass1_block);
+        global_state.enter_new_block();
     }
+
+    let entry_block = pass1_func.blocks
+        .get_mut(&pass1_func.entry.as_ref().expect("Entry block should be set").clone())
+        .expect("Entry block should exist");
+
+    let global_inits = global_state.global_vars.iter()
+        .map(|var| format!("la g_{}, {}", &var[1..], var))
+        .collect::<Vec<String>>();
+
+    entry_block.block.instrs = global_inits.into_iter()
+        .map(|instr| Instr::new(&instr))
+        .chain(entry_block.block.instrs.clone())
+        .collect();
 
     pass1_func
 }
@@ -190,13 +224,8 @@ impl Pass1Append for Value  {
                 assert!(value_data.kind().is_global_alloc());
                 let name = value_data.name().as_ref().expect("Global value should have a name");
                 assert!(!is_write, "Global ptr should not be written to");
-                if state.ssa_global_reg.contains(name) {
-                    format!("g_{}", &name[1..])
-                } else {
-                    state.ssa_global_reg.insert(name.clone());
-                    block.push_instr(&format!("la g_{}, {}", &name[1..], &name[1..]));
-                    format!("g_{}", &name[1..])
-                }
+                state.global_vars.insert(name.clone());
+                format!("g_{}", &name[1..])
             }
             else if let Some(name) = context.dfg().value(value).name().as_ref() {
                 state.get_var(name, is_write)
