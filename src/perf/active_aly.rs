@@ -401,3 +401,35 @@ pub fn active_analyze(block: &Block, out: HashSet<String>, conflicts: Option<&mu
     }
     now
 }
+
+pub fn req_active_analyze(block: &Block, out: HashSet<String>, actives: Option<&mut LinkedList<HashSet<String>>>) -> HashSet<String> {
+    // This function is similar to `active_analyze`, but it does not deem value not needed as active
+    let mut binding = LinkedList::new();
+    let conflicts = actives.unwrap_or(&mut binding);
+    let mut now = out.clone();
+    conflicts.clear();
+    conflicts.push_back(now.clone());
+    for i in (0..block.instrs.len()).rev() {
+        let instr = &block.instrs[i];
+        let kill_vars = instr.kill_vars();
+        let gen_vars = instr.gen_vars();
+        let mut killed = true;
+        assert!(kill_vars.len() <= 1, "Kill variables must <= 1");
+        for var in kill_vars {
+            killed = now.remove(&var);
+        }
+
+        if killed || instr.is_side_effecting()
+        {
+            for var in gen_vars {
+                now.insert(var);
+            }
+        }
+        
+        if !now.is_empty() {
+            conflicts.push_front(now.clone());
+        }
+    }
+    now
+}
+

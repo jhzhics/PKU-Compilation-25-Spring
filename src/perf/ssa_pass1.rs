@@ -17,6 +17,7 @@ pub struct Pass1Func
     pub args: Vec<String>,
 }
 impl Pass1Func {
+    #[allow(dead_code)]
     pub fn dump(&self) -> LinkedList<String>
     {
         let mut inst_list: LinkedList<String> = LinkedList::new();
@@ -140,7 +141,7 @@ impl Pass1Context<'_> {
     }
 }
 
-pub fn pass1(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func {
+pub fn pass(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func {
     let context = Pass1Context::new(prog, &func);
     let mut global_state = Pass1State {
         temp_allocator: TempAllocator::new(),
@@ -422,6 +423,7 @@ impl Pass1Append for Value  {
                 block.push_instr(&format!("j L{}", target_name));
                 assert!(block.next.is_empty(), "Jump instruction should not have next blocks");
                 block.next.push(format!("L{}", target_name).to_string());
+                assert!(format!("L{}", target_name) != block.block.name, "Jump instruction should not jump to itself");
             },
 
             ValueKind::Branch(ins) =>
@@ -435,6 +437,8 @@ impl Pass1Append for Value  {
                 assert!(block.next.is_empty(), "Branch instruction should not have next blocks");
                 block.next.push(format!("L{}", true_target_name).to_string());
                 block.next.push(format!("L{}", false_target_name).to_string());
+                assert!(format!("L{}", true_target_name) != block.block.name, "Branch instruction should not branch to itself");
+                assert!(format!("L{}", false_target_name) != block.block.name, "Branch instruction should not branch to itself");
             },
 
             ValueKind::Call(ins) =>

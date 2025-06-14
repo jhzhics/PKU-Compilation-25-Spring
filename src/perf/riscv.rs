@@ -29,6 +29,16 @@ impl Instr {
             operands,
         }
     }
+
+    pub fn is_side_effecting(&self) -> bool {
+        match self.op.as_str() {
+            "li" | "xor" | "seqz" | "add" | "sub" | "mul" | "div" |
+            "rem" | "slt" | "sgt" | "xori" | "snez" | "and" | "or"|
+            "mv" | "la" | "lw" => false,
+            "sw" | "j" | "Ret" | "Alloc" | "Br" | "Call_1" | "Call_2" => true,
+            _ => panic!("Unknown instruction in is_side_effecting: {}", self.op),
+        }
+    }
 }
 
 impl Display for Instr {
