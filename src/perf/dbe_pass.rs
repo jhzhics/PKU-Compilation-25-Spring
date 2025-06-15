@@ -195,6 +195,14 @@ fn eliminate_dead_branches(block: &mut ssa_pass1::Pass1Block) -> bool {
                     let result = val1 * val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                 }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                }
             }
         } else if inst.op == "div" {
             assert!(
@@ -279,6 +287,14 @@ fn eliminate_dead_branches(block: &mut ssa_pass1::Pass1Block) -> bool {
                     let result = val1 & val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                 }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                }
             }
         } else if inst.op == "or" {
             assert!(
@@ -290,6 +306,14 @@ fn eliminate_dead_branches(block: &mut ssa_pass1::Pass1Block) -> bool {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 | val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == -1 {
+                    constant_map.insert(inst.operands[0].clone(), -1);
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == -1 {
+                    constant_map.insert(inst.operands[0].clone(), -1);
                 }
             }
         } else if inst.op == "sw" {

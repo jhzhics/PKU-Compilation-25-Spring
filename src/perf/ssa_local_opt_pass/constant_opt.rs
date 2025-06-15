@@ -28,6 +28,14 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == 0 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 0 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
+                }
             }
         } else if inst.op == "seqz" {
             assert!(
@@ -52,6 +60,15 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == 0 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
+                }
+            }
+            else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 0 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
+                }
             }
         } else if inst.op == "sub" {
             assert!(
@@ -64,6 +81,10 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     let result = val1 - val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 0 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
                 }
             }
         } else if inst.op == "mul" {
@@ -78,6 +99,20 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == 1 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
+                } else if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                    *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 1 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
+                } else if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                    *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
+                }
             }
         } else if inst.op == "div" {
             assert!(
@@ -91,6 +126,10 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     let result = val1 / val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 1 {
+                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
                 }
             }
         } else if inst.op == "rem" {
@@ -169,6 +208,16 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                    *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == 0 {
+                    constant_map.insert(inst.operands[0].clone(), 0);
+                    *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
+                }
             }
         } else if inst.op == "or" {
             assert!(
@@ -181,6 +230,16 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     let result = val1 | val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[1]) {
+                if *val == -1 {
+                    constant_map.insert(inst.operands[0].clone(), -1);
+                    *inst = Instr::new(&format!("li {}, -1", inst.operands[0]));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if *val == -1 {
+                    constant_map.insert(inst.operands[0].clone(), -1);
+                    *inst = Instr::new(&format!("li {}, -1", inst.operands[0]));
                 }
             }
         } else if inst.op == "sw" {
