@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 lazy_static! {
     static ref GLOBAL_REG_MAP: Mutex<HashMap<Value, String>> = Mutex::new(HashMap::new());
-    
+
     static ref REG_POOL: Mutex<VecDeque<String>> = Mutex::new(VecDeque::from(vec![
         // "t0".to_string(),  //t0 is reserved for temporary values
         "t1".to_string(), "t2".to_string(), "t3".to_string(),
@@ -36,8 +36,8 @@ pub fn remove_reg(value: &Value) -> Option<String> {
 }
 
 pub fn alloc_ins_reg(value: &Value) -> String {
-    let target_reg= get_new_reg().expect("No available registers!");
-    
+    let target_reg = get_new_reg().expect("No available registers!");
+
     let mut global_reg_map = GLOBAL_REG_MAP.lock().unwrap();
     global_reg_map.insert(value.clone(), target_reg.clone());
     target_reg

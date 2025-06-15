@@ -1,11 +1,133 @@
-//! This function performs constant propagation and folding on SSA form.
+//! This module actions on ssa_form1, it is to eliminate dead basic blocks and instructions.
+//! With constant propagation for conditional branches.
+//! Will delete dead basic blocks.
+
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::riscv::Instr;
-use std::collections::HashMap;
+use super::ssa_pass1;
 
-pub fn pass(block: &mut super::ssa_form::SSABlock) {
+pub fn pass(func: &mut ssa_pass1::Pass1Func) {
+    let mut modified = true;
+    while modified {
+        modified = false;
+        for (_, block) in func.blocks.iter_mut() {
+            if eliminate_dead_branches(block) {
+                modified = true;
+            }
+        }
+        if block_merge_eliminate(func) {
+            modified = true;
+        }
+    }
+}
+
+fn block_merge_eliminate(func: &mut ssa_pass1::Pass1Func) -> bool {
+    let mut modified = false;
+    let mut prev: HashMap<String, Vec<String>> = HashMap::new();
+    let mut reachable: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    let entry = func
+        .entry
+        .as_ref()
+        .expect("Function should have an entry block");
+    queue.push_back(entry.clone());
+    while let Some(block_name) = queue.pop_front() {
+        if reachable.contains(&block_name) {
+            continue;
+        }
+        reachable.insert(block_name.clone());
+        let block = func
+            .blocks
+            .get_mut(&block_name)
+            .expect("Block should exist");
+        for next in &block.next {
+            queue.push_back(next.clone());
+            prev.entry(next.clone())
+                .or_default()
+                .push(block_name.clone());
+        }
+    }
+    if reachable.len() != func.blocks.len() {
+        modified = true;
+        func.blocks.retain(|name, _| reachable.contains(name));
+    }
+    let mut check_merge = true;
+    while check_merge {
+        check_merge = false;
+        let block_names = func.blocks.keys().cloned().collect::<Vec<String>>();
+        for block_name in block_names {
+            let block = func.blocks.get(&block_name).expect("Block should exist");
+            if block.next.len() != 1 {
+                continue;
+            }
+            let next_block_name = block.next[0].clone();
+            let next_prev = prev
+                .get(&next_block_name)
+                .expect("Next block should have predecessors");
+            if next_prev.len() != 1 {
+                continue;
+            }
+            assert!(
+                next_block_name != block_name,
+                "Next block should not be the same as current block"
+            );
+            let new_block = merge_block(
+                block,
+                func.blocks
+                    .get(&next_block_name)
+                    .expect("Next block should exist"),
+            );
+            assert!(
+                new_block.block.name == block_name,
+                "Merged block name should match previous block name"
+            );
+            prev.remove(&next_block_name);
+            prev.iter_mut().for_each(|(_name, preds)| {
+                if let Some(pos) = preds.iter().position(|x| x == &next_block_name) {
+                    preds[pos] = new_block.block.name.clone();
+                }
+            });
+            func.blocks.remove(&next_block_name);
+            func.blocks.insert(new_block.block.name.clone(), new_block);
+            check_merge = true;
+            modified = true;
+            break;
+        }
+    }
+    return modified;
+}
+
+fn merge_block(
+    prev_block: &ssa_pass1::Pass1Block,
+    next_block: &ssa_pass1::Pass1Block,
+) -> ssa_pass1::Pass1Block {
+    let mut merged_block = prev_block.clone();
+    merged_block.block.instrs.pop(); // Remove the jmp instruction from the previous block
+    merged_block
+        .block
+        .instrs
+        .extend(next_block.block.instrs.clone());
+    merged_block.next = next_block.next.clone();
+    merged_block
+}
+
+/// This function eliminates dead branches in a basic block by performing constant propagation
+/// # Returns
+/// Returns true if the last instruction is a branch and it can be determined to be dead, false otherwise.
+fn eliminate_dead_branches(block: &mut ssa_pass1::Pass1Block) -> bool {
+    let last_inst = block
+        .block
+        .instrs
+        .last()
+        .expect("Block should have at least one instruction");
+    if last_inst.op != "Br" {
+        return false;
+    }
+
     let mut constant_map: HashMap<String, i32> = HashMap::new();
-    for inst in &mut block.block.instrs {
+
+    for inst in &block.block.instrs {
         if inst.op == "li" {
             assert!(
                 inst.operands.len() == 2,
@@ -26,7 +148,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 ^ val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "seqz" {
@@ -38,7 +159,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
             if let Some(val) = constant_map.get(&inst.operands[1]) {
                 let result = if *val == 0 { 1 } else { 0 };
                 constant_map.insert(inst.operands[0].clone(), result);
-                *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
             }
         } else if inst.op == "add" {
             assert!(
@@ -50,7 +170,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 + val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "sub" {
@@ -63,7 +182,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 - val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "mul" {
@@ -76,7 +194,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 * val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "div" {
@@ -90,7 +207,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     assert!(*val2 != 0, "Division by zero in instruction: {}", inst);
                     let result = val1 / val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "rem" {
@@ -104,7 +220,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     assert!(*val2 != 0, "Division by zero in instruction: {}", inst);
                     let result = val1 % val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "slt" {
@@ -117,7 +232,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = if val1 < val2 { 1 } else { 0 };
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "sgt" {
@@ -130,7 +244,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = if val1 > val2 { 1 } else { 0 };
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "xori" {
@@ -143,7 +256,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Ok(val2) = inst.operands[2].parse::<i32>() {
                     let result = val1 ^ val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "snez" {
@@ -155,7 +267,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
             if let Some(val) = constant_map.get(&inst.operands[1]) {
                 let result = if *val != 0 { 1 } else { 0 };
                 constant_map.insert(inst.operands[0].clone(), result);
-                *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
             }
         } else if inst.op == "and" {
             assert!(
@@ -167,7 +278,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 & val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "or" {
@@ -180,7 +290,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 | val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
             }
         } else if inst.op == "sw" {
@@ -249,5 +358,27 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
         } else {
             panic!("Unknown instruction: {}", inst);
         }
+    }
+
+    let last_inst = block
+        .block
+        .instrs
+        .last_mut()
+        .expect("Block should have at least one instruction");
+    let cond = last_inst.operands[0].clone();
+
+    if let Some(val) = constant_map.get(&cond) {
+        let target = if *val == 1 {
+            last_inst.operands[1].clone()
+        } else if *val == 0 {
+            last_inst.operands[2].clone()
+        } else {
+            panic!("Unexpected value for condition {}: {}", cond, val);
+        };
+        *last_inst = Instr::new(&format!("j {}", target));
+        block.next = vec![target];
+        return true;
+    } else {
+        return false;
     }
 }

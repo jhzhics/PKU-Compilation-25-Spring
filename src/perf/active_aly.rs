@@ -3,11 +3,11 @@
 use std::collections::HashSet;
 use std::collections::LinkedList;
 
-use super::riscv::Instr;
 use super::riscv::Block;
+use super::riscv::Instr;
 
 // Extracts the number and register from a memory operand string.
-fn extract_register_from_mem_operand(operand_str: &str) -> Option<(String , String)> {
+fn extract_register_from_mem_operand(operand_str: &str) -> Option<(String, String)> {
     // Look for the last '(' and first ')' to handle cases like 'offset(register)'
     if let Some(open_paren_idx) = operand_str.rfind('(') {
         if let Some(close_paren_idx) = operand_str.rfind(')') {
@@ -26,98 +26,199 @@ fn extract_register_from_mem_operand(operand_str: &str) -> Option<(String , Stri
 }
 
 impl Instr {
-    pub fn map_read_vars(&mut self, mut f: impl FnMut(String) -> String)
-    {
+    pub fn map_read_vars(&mut self, mut f: impl FnMut(String) -> String) {
         if self.op == "li" {
-            assert!(self.operands.len() == 2, "li instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "li instruction must have exactly two operands: {}",
+                self
+            );
         } else if self.op == "xor" {
-            assert!(self.operands.len() == 3, "xor instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xor instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "seqz" {
-            assert!(self.operands.len() == 2, "seqz instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "seqz instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
         } else if self.op == "add" {
-            assert!(self.operands.len() == 3, "add instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "add instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "sub" {
-            assert!(self.operands.len() == 3, "sub instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sub instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "mul" {
-            assert!(self.operands.len() == 3, "mul instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "mul instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "div" {
-            assert!(self.operands.len() == 3, "div instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "div instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "rem" {
-            assert!(self.operands.len() == 3, "rem instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "rem instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "slt" {
-            assert!(self.operands.len() == 3, "slt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "slt instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "sgt" {
-            assert!(self.operands.len() == 3, "sgt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sgt instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "xori" {
-            assert!(self.operands.len() == 3, "xori instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xori instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
         } else if self.op == "snez" {
-            assert!(self.operands.len() == 2, "snez instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "snez instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
         } else if self.op == "and" {
-            assert!(self.operands.len() == 3, "and instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "and instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "or" {
-            assert!(self.operands.len() == 3, "or instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "or instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
             self.operands[2] = f(self.operands[2].clone());
         } else if self.op == "sw" {
-            assert!(self.operands.len() == 2, "sw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "sw instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
             if let Some((o, v)) = extract_register_from_mem_operand(&self.operands[1]) {
                 self.operands[1] = format!("{}({})", o, f(v));
             } else {
-                panic!("Invalid memory operand in sw instruction: {}", self.operands[1]);
+                panic!(
+                    "Invalid memory operand in sw instruction: {}",
+                    self.operands[1]
+                );
             }
         } else if self.op == "mv" {
-            assert!(self.operands.len() == 2, "mv instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "mv instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[1] = f(self.operands[1].clone());
         } else if self.op == "la" {
-            assert!(self.operands.len() == 2, "la instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "la instruction must have exactly two operands: {}",
+                self
+            );
         } else if self.op == "lw" {
-            assert!(self.operands.len() == 2, "lw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "lw instruction must have exactly two operands: {}",
+                self
+            );
             if let Some((o, v)) = extract_register_from_mem_operand(&self.operands[1]) {
                 self.operands[1] = format!("{}({})", o, f(v));
             } else {
-                panic!("Invalid memory operand in lw instruction: {}", self.operands[1]);
+                panic!(
+                    "Invalid memory operand in lw instruction: {}",
+                    self.operands[1]
+                );
             }
         } else if self.op == "j" {
-            assert!(self.operands.len() == 1, "j instruction must have exactly one operand: {}", self);
+            assert!(
+                self.operands.len() == 1,
+                "j instruction must have exactly one operand: {}",
+                self
+            );
         } else if self.op == "Ret" {
-            assert!(self.operands.len() <= 1, "Ret instruction must have <= 1 operand: {}", self);
+            assert!(
+                self.operands.len() <= 1,
+                "Ret instruction must have <= 1 operand: {}",
+                self
+            );
             if !self.operands.is_empty() {
                 self.operands[0] = f(self.operands[0].clone());
             }
         } else if self.op == "Alloc" {
-            assert!(self.operands.len() == 2, "Alloc instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "Alloc instruction must have exactly two operands: {}",
+                self
+            );
         } else if self.op == "Br" {
-            assert!(self.operands.len() == 3, "Br instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "Br instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "Call_1" {
-            assert!(self.operands.len() >=1, "Call_1 instruction must have at least one operand: {}", self);
+            assert!(
+                self.operands.len() >= 1,
+                "Call_1 instruction must have at least one operand: {}",
+                self
+            );
             for i in 1..self.operands.len() {
                 self.operands[i] = f(self.operands[i].clone());
             }
         } else if self.op == "Call_2" {
-            assert!(self.operands.len() >= 2, "Call_2 instruction must have at least two operands: {}", self);
+            assert!(
+                self.operands.len() >= 2,
+                "Call_2 instruction must have at least two operands: {}",
+                self
+            );
             for i in 2..self.operands.len() {
                 self.operands[i] = f(self.operands[i].clone());
             }
@@ -126,250 +227,539 @@ impl Instr {
         }
     }
 
-    pub fn map_write_vars(&mut self, f: impl FnOnce(String) -> String)
-    {
+    pub fn map_write_vars(&mut self, f: impl FnOnce(String) -> String) {
         if self.op == "li" {
-            assert!(self.operands.len() == 2, "li instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "li instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "xor" {
-            assert!(self.operands.len() == 3, "xor instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xor instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "seqz" {
-            assert!(self.operands.len() == 2, "seqz instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "seqz instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "add" {
-            assert!(self.operands.len() == 3, "add instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "add instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "sub" {
-            assert!(self.operands.len() == 3, "sub instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sub instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "mul" {
-            assert!(self.operands.len() == 3, "mul instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "mul instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "div" {
-            assert!(self.operands.len() == 3, "div instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "div instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "rem" {
-            assert!(self.operands.len() == 3, "rem instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "rem instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "slt" {
-            assert!(self.operands.len() == 3, "slt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "slt instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "sgt" {
-            assert!(self.operands.len() == 3, "sgt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sgt instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "xori" {
-            assert!(self.operands.len() == 3, "xori instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xori instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "snez" {
-            assert!(self.operands.len() == 2, "snez instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "snez instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "and" {
-            assert!(self.operands.len() == 3, "and instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "and instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "or" {
-            assert!(self.operands.len() == 3, "or instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "or instruction must have exactly three operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "sw" {
-            assert!(self.operands.len() == 2, "sw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "sw instruction must have exactly two operands: {}",
+                self
+            );
         } else if self.op == "mv" {
-            assert!(self.operands.len() == 2, "mv instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "mv instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "la" {
-            assert!(self.operands.len() == 2, "la instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "la instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "lw" {
-            assert!(self.operands.len() == 2, "lw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "lw instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "j" {
-            assert!(self.operands.len() == 1, "j instruction must have exactly one operand: {}", self);
+            assert!(
+                self.operands.len() == 1,
+                "j instruction must have exactly one operand: {}",
+                self
+            );
         } else if self.op == "Ret" {
-            assert!(self.operands.len() <= 1, "Ret instruction must have <= 1 operand: {}", self);
+            assert!(
+                self.operands.len() <= 1,
+                "Ret instruction must have <= 1 operand: {}",
+                self
+            );
         } else if self.op == "Alloc" {
-            assert!(self.operands.len() == 2, "Alloc instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "Alloc instruction must have exactly two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
         } else if self.op == "Br" {
-            assert!(self.operands.len() == 3, "Br instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "Br instruction must have exactly three operands: {}",
+                self
+            );
         } else if self.op == "Call_1" {
-            assert!(self.operands.len() >=1, "Call_1 instruction must have at least one operand: {}", self);
+            assert!(
+                self.operands.len() >= 1,
+                "Call_1 instruction must have at least one operand: {}",
+                self
+            );
         } else if self.op == "Call_2" {
-            assert!(self.operands.len() >= 2, "Call_2 instruction must have at least two operands: {}", self);
+            assert!(
+                self.operands.len() >= 2,
+                "Call_2 instruction must have at least two operands: {}",
+                self
+            );
             self.operands[0] = f(self.operands[0].clone());
-        }
-        else {
+        } else {
             panic!("Unknown instruction: {}", self);
         }
     }
 
-    pub fn kill_vars(&self) -> Vec<String>
-    {
+    pub fn kill_vars(&self) -> Vec<String> {
         if self.op == "li" {
-            assert!(self.operands.len() == 2, "li instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "li instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "xor" {
-            assert!(self.operands.len() == 3, "xor instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xor instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "seqz" {
-            assert!(self.operands.len() == 2, "seqz instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "seqz instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "add" {
-            assert!(self.operands.len() == 3, "add instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "add instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "sub" {
-            assert!(self.operands.len() == 3, "sub instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sub instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "mul" {
-            assert!(self.operands.len() == 3, "mul instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "mul instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "div" {
-            assert!(self.operands.len() == 3, "div instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "div instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "rem" {
-            assert!(self.operands.len() == 3, "rem instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "rem instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "slt" {
-            assert!(self.operands.len() == 3, "slt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "slt instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "sgt" {
-            assert!(self.operands.len() == 3, "sgt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sgt instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "xori" {
-            assert!(self.operands.len() == 3, "xori instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xori instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "snez" {
-            assert!(self.operands.len() == 2, "snez instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "snez instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "and" {
-            assert!(self.operands.len() == 3, "and instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "and instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "or" {
-            assert!(self.operands.len() == 3, "or instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "or instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "sw" {
-            assert!(self.operands.len() == 2, "sw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "sw instruction must have exactly two operands: {}",
+                self
+            );
             vec![]
         } else if self.op == "mv" {
-            assert!(self.operands.len() == 2, "mv instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "mv instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "la" {
-            assert!(self.operands.len() == 2, "la instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "la instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "lw" {
-            assert!(self.operands.len() == 2, "lw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "lw instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "j" {
-            assert!(self.operands.len() == 1, "j instruction must have exactly one operand: {}", self);
+            assert!(
+                self.operands.len() == 1,
+                "j instruction must have exactly one operand: {}",
+                self
+            );
             vec![]
         } else if self.op == "Ret" {
-            assert!(self.operands.len() <= 1, "Ret instruction must have <= 1 operand: {}", self);
+            assert!(
+                self.operands.len() <= 1,
+                "Ret instruction must have <= 1 operand: {}",
+                self
+            );
             vec![]
         } else if self.op == "Alloc" {
-            assert!(self.operands.len() == 2, "Alloc instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "Alloc instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "Br" {
-            assert!(self.operands.len() == 3, "Br instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "Br instruction must have exactly three operands: {}",
+                self
+            );
             vec![]
         } else if self.op == "Call_1" {
-            assert!(self.operands.len() >=1, "Call_1 instruction must have at least one operand: {}", self);
+            assert!(
+                self.operands.len() >= 1,
+                "Call_1 instruction must have at least one operand: {}",
+                self
+            );
             vec![]
         } else if self.op == "Call_2" {
-            assert!(self.operands.len() >= 2, "Call_2 instruction must have at least two operands: {}", self);
+            assert!(
+                self.operands.len() >= 2,
+                "Call_2 instruction must have at least two operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
-        }
-        else {
+        } else {
             panic!("Unknown instruction: {}", self);
         }
     }
 
-    pub fn gen_vars(&self) -> Vec<String>
-    {
+    pub fn gen_vars(&self) -> Vec<String> {
         if self.op == "li" {
-            assert!(self.operands.len() == 2, "li instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "li instruction must have exactly two operands: {}",
+                self
+            );
             vec![]
         } else if self.op == "xor" {
-            assert!(self.operands.len() == 3, "xor instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xor instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "seqz" {
-            assert!(self.operands.len() == 2, "seqz instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "seqz instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[1].clone()]
         } else if self.op == "add" {
-            assert!(self.operands.len() == 3, "add instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "add instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "sub" {
-            assert!(self.operands.len() == 3, "sub instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sub instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "mul" {
-            assert!(self.operands.len() == 3, "mul instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "mul instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "div" {
-            assert!(self.operands.len() == 3, "div instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "div instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "rem" {
-            assert!(self.operands.len() == 3, "rem instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "rem instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "slt" {
-            assert!(self.operands.len() == 3, "slt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "slt instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "sgt" {
-            assert!(self.operands.len() == 3, "sgt instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "sgt instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "xori" {
-            assert!(self.operands.len() == 3, "xori instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "xori instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone()]
         } else if self.op == "snez" {
-            assert!(self.operands.len() == 2, "snez instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "snez instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[1].clone()]
         } else if self.op == "and" {
-            assert!(self.operands.len() == 3, "and instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "and instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "or" {
-            assert!(self.operands.len() == 3, "or instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "or instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[1].clone(), self.operands[2].clone()]
         } else if self.op == "sw" {
-            assert!(self.operands.len() == 2, "sw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "sw instruction must have exactly two operands: {}",
+                self
+            );
             let mut used_vars = vec![self.operands[0].clone()];
             if let Some((_, s)) = extract_register_from_mem_operand(&self.operands[1]) {
                 used_vars.push(s);
             } else {
-                panic!("Invalid memory operand in sw instruction: {}", self.operands[1]);
+                panic!(
+                    "Invalid memory operand in sw instruction: {}",
+                    self.operands[1]
+                );
             }
             used_vars
         } else if self.op == "mv" {
-            assert!(self.operands.len() == 2, "mv instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "mv instruction must have exactly two operands: {}",
+                self
+            );
             vec![self.operands[1].clone()]
         } else if self.op == "la" {
-            assert!(self.operands.len() == 2, "la instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "la instruction must have exactly two operands: {}",
+                self
+            );
             vec![]
         } else if self.op == "lw" {
-            assert!(self.operands.len() == 2, "lw instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "lw instruction must have exactly two operands: {}",
+                self
+            );
             let mut used_vars = vec![];
             if let Some((_, s)) = extract_register_from_mem_operand(&self.operands[1]) {
                 used_vars.push(s);
             } else {
-                panic!("Invalid memory operand in lw instruction: {}", self.operands[1]);
+                panic!(
+                    "Invalid memory operand in lw instruction: {}",
+                    self.operands[1]
+                );
             }
             used_vars
         } else if self.op == "j" {
-            assert!(self.operands.len() == 1, "j instruction must have exactly one operand: {}", self);
+            assert!(
+                self.operands.len() == 1,
+                "j instruction must have exactly one operand: {}",
+                self
+            );
             vec![]
         } else if self.op == "Ret" {
-            assert!(self.operands.len() <= 1, "Ret instruction must have <= 1 operand: {}", self);
+            assert!(
+                self.operands.len() <= 1,
+                "Ret instruction must have <= 1 operand: {}",
+                self
+            );
             if !self.operands.is_empty() {
                 vec![self.operands[0].clone()]
             } else {
                 vec![]
             }
         } else if self.op == "Alloc" {
-            assert!(self.operands.len() == 2, "Alloc instruction must have exactly two operands: {}", self);
+            assert!(
+                self.operands.len() == 2,
+                "Alloc instruction must have exactly two operands: {}",
+                self
+            );
             vec![]
         } else if self.op == "Br" {
-            assert!(self.operands.len() == 3, "Br instruction must have exactly three operands: {}", self);
+            assert!(
+                self.operands.len() == 3,
+                "Br instruction must have exactly three operands: {}",
+                self
+            );
             vec![self.operands[0].clone()]
         } else if self.op == "Call_1" {
-            assert!(self.operands.len() >=1, "Call_1 instruction must have at least one operand: {}", self);
+            assert!(
+                self.operands.len() >= 1,
+                "Call_1 instruction must have at least one operand: {}",
+                self
+            );
             self.operands[1..].to_vec()
         } else if self.op == "Call_2" {
-            assert!(self.operands.len() >= 2, "Call_2 instruction must have at least two operands: {}", self);
+            assert!(
+                self.operands.len() >= 2,
+                "Call_2 instruction must have at least two operands: {}",
+                self
+            );
             self.operands[2..].to_vec()
         } else {
             panic!("Unknown instruction: {}", self);
@@ -377,7 +767,11 @@ impl Instr {
     }
 }
 
-pub fn active_analyze(block: &Block, out: HashSet<String>, conflicts: Option<&mut LinkedList<HashSet<String>>>) -> HashSet<String> {
+pub fn active_analyze(
+    block: &Block,
+    out: HashSet<String>,
+    conflicts: Option<&mut LinkedList<HashSet<String>>>,
+) -> HashSet<String> {
     let mut binding = LinkedList::new();
     let conflicts = conflicts.unwrap_or(&mut binding);
     let mut now = out.clone();
@@ -390,25 +784,27 @@ pub fn active_analyze(block: &Block, out: HashSet<String>, conflicts: Option<&mu
         for var in kill_vars {
             now.remove(&var);
         }
-        
+
         for var in gen_vars {
             now.insert(var);
         }
-        
-        if !now.is_empty() {
-            conflicts.push_back(now.clone());
-        }
+
+        conflicts.push_back(now.clone());
     }
     now
 }
 
-pub fn req_active_analyze(block: &Block, out: HashSet<String>, actives: Option<&mut LinkedList<HashSet<String>>>) -> HashSet<String> {
+pub fn req_active_analyze(
+    block: &Block,
+    out: HashSet<String>,
+    actives: Option<&mut LinkedList<HashSet<String>>>,
+) -> HashSet<String> {
     // This function is similar to `active_analyze`, but it does not deem value not needed as active
     let mut binding = LinkedList::new();
-    let conflicts = actives.unwrap_or(&mut binding);
+    let actives = actives.unwrap_or(&mut binding);
     let mut now = out.clone();
-    conflicts.clear();
-    conflicts.push_back(now.clone());
+    actives.clear();
+    actives.push_back(now.clone());
     for i in (0..block.instrs.len()).rev() {
         let instr = &block.instrs[i];
         let kill_vars = instr.kill_vars();
@@ -419,17 +815,13 @@ pub fn req_active_analyze(block: &Block, out: HashSet<String>, actives: Option<&
             killed = now.remove(&var);
         }
 
-        if killed || instr.is_side_effecting()
-        {
+        if killed || instr.is_side_effecting() {
             for var in gen_vars {
                 now.insert(var);
             }
         }
-        
-        if !now.is_empty() {
-            conflicts.push_front(now.clone());
-        }
+
+        actives.push_front(now.clone());
     }
     now
 }
-

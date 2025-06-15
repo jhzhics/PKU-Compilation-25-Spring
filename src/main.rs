@@ -6,9 +6,7 @@ mod perf;
 use cli::Cli;
 
 use lalrpop_util::lalrpop_mod;
-use std::{
-    io::{Read, Write}
-};
+use std::io::{Read, Write};
 lalrpop_mod!(sysy);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,7 +60,9 @@ fn excute_koopa(
     let mut input = String::new();
     istream.read_to_string(&mut input)?;
 
-    let ast = sysy::CompUnitParser::new().parse(&input).expect("Expect to be a correct SysY Program");
+    let ast = sysy::CompUnitParser::new()
+        .parse(&input)
+        .expect("Expect to be a correct SysY Program");
     // println!("AST:\n{:#?}", ast);
     let koopa_program = ir::build_koopa(ast);
     koopa::back::KoopaGenerator::new(ostream).generate_on(&koopa_program)?;

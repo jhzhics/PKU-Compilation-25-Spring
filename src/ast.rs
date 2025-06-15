@@ -1,5 +1,5 @@
 //! Abstract Syntax Tree (AST) module
-//! 
+//!
 /// Number    ::= INT_CONST;
 #[derive(Debug, Clone)]
 pub struct Number {
@@ -29,7 +29,7 @@ pub enum BinaryOp {
     Equal,
     NotEqual,
     LogicAnd,
-    LogicOr
+    LogicOr,
 }
 
 /// UnaryExp    ::= PrimaryExp | UnaryOp UnaryExp;
@@ -45,27 +45,21 @@ pub enum Exp {
         unary_op: UnaryOp,
         exp: Box<Exp>,
     },
-    BinaryExp{
+    BinaryExp {
         binary_op: BinaryOp,
         lhs: Box<Exp>,
-        rhs: Box<Exp>
+        rhs: Box<Exp>,
     },
-    Call
-    {
+    Call {
         ident: Ident,
-        args: Vec<Exp>
-    }
+        args: Vec<Exp>,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub enum InitVal
-{
-    Scalar {
-        exp: Exp
-    },
-    Array {
-        init_vals: Vec<Box<InitVal>>
-    }
+pub enum InitVal {
+    Scalar { exp: Exp },
+    Array { init_vals: Vec<Box<InitVal>> },
 }
 
 #[derive(Debug)]
@@ -78,45 +72,60 @@ pub enum DeclEntry {
         ident: Ident,
         shape: Vec<Exp>,
         init_val: Option<InitVal>,
-    }
+    },
 }
 
 #[derive(Debug)]
 pub enum Decl {
-    ConstDecl{btype: ValType, const_defs: Vec<DeclEntry>},
-    VarDecl{btype: ValType, var_defs: Vec<DeclEntry>}
+    ConstDecl {
+        btype: ValType,
+        const_defs: Vec<DeclEntry>,
+    },
+    VarDecl {
+        btype: ValType,
+        var_defs: Vec<DeclEntry>,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub enum Lval
-{
-    Ident {
-        ident: Ident,
-    },
-    Array {
-        ident: Ident,
-        indices: Vec<Exp>,
-    }
+pub enum Lval {
+    Ident { ident: Ident },
+    Array { ident: Ident, indices: Vec<Exp> },
 }
 
 #[derive(Debug)]
 pub enum Stmt {
-    Return{exp: Option<Exp>},
-    Assign{lval: Lval, exp: Exp},
-    Exp{exp: Option<Exp>},
-    Block{block: Block},
-    If{cond: Exp, then_block: Block, else_block: Option<Block>},
-    While{cond: Exp, block: Block},
+    Return {
+        exp: Option<Exp>,
+    },
+    Assign {
+        lval: Lval,
+        exp: Exp,
+    },
+    Exp {
+        exp: Option<Exp>,
+    },
+    Block {
+        block: Block,
+    },
+    If {
+        cond: Exp,
+        then_block: Block,
+        else_block: Option<Block>,
+    },
+    While {
+        cond: Exp,
+        block: Block,
+    },
     Break,
-    Continue
-} 
+    Continue,
+}
 
 ///BlockItem     ::= Decl | Stmt;
 #[derive(Debug)]
-pub enum BlockItem
-{
-    Stmt{stmt: Stmt},
-    Decl{decl: Decl}
+pub enum BlockItem {
+    Stmt { stmt: Stmt },
+    Decl { decl: Decl },
 }
 
 /// Ident
@@ -128,13 +137,13 @@ pub struct Ident {
 /// Block     ::= "{" Stmt "}";
 #[derive(Debug)]
 pub struct Block {
-    pub block_items: Vec<BlockItem>
+    pub block_items: Vec<BlockItem>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValType {
     Int,
-    Void
+    Void,
 }
 
 #[derive(Debug, Clone)]
@@ -147,7 +156,7 @@ pub enum FuncParam {
         btype: ValType,
         ident: Ident,
         shape: Vec<Exp>,
-    }
+    },
 }
 
 /// FuncDef   ::= FuncType IDENT "(" ")" Block;

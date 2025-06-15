@@ -7,13 +7,13 @@
 
 pub mod constant_opt;
 pub mod cse_opt;
-pub mod repl_elm;
 pub mod dce_opt;
+pub mod repl_elm;
 
-use super::ssa_pass2;
-use super::ssa_form;
-use super::riscv;
 use super::active_aly;
+use super::riscv;
+use super::ssa_form;
+use super::ssa_pass2;
 
 pub fn pass(func: &mut ssa_pass2::SSAFunc) {
     func.blocks.iter_mut().for_each(|(_, block)| {

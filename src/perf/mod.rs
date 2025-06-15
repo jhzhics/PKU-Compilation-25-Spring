@@ -1,14 +1,14 @@
+mod active_aly;
+mod dbe_pass;
 mod misc;
 mod riscv;
-mod active_aly;
 mod ssa_form;
+mod ssa_local_opt_pass;
 mod ssa_pass1;
 mod ssa_pass2;
-mod ssa_local_opt_pass;
 
 use koopa;
 use std::collections::LinkedList;
-
 
 pub fn compile(prog: koopa::ir::Program) -> String {
     koopa::ir::Type::set_ptr_size(4);
@@ -21,11 +21,17 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .map(|(f, _)| ssa_pass1::pass(&prog, f.clone()))
         .collect::<Vec<ssa_pass1::Pass1Func>>();
 
-    let ssa_pass1funcs = pass1funcs.iter().filter(|f| {
-    f.entry.is_some() });
+    let mut ssa_pass1funcs = pass1funcs
+        .iter()
+        .cloned()
+        .filter(|f| f.entry.is_some())
+        .collect::<Vec<ssa_pass1::Pass1Func>>();
 
+    ssa_pass1funcs.iter_mut().for_each(|f| dbe_pass::pass(f));
 
     let ssa_funcs = ssa_pass1funcs
+        .iter()
+        .cloned()
         .map(|f| ssa_pass2::pass(f.clone()))
         .collect::<Vec<ssa_pass2::SSAFunc>>();
 
@@ -34,7 +40,6 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         inst_list.push_back("".to_string());
     });
 
-    
     inst_list
         .iter()
         .map(|s| s.as_str())
