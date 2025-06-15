@@ -2,7 +2,8 @@ use std::collections::{HashSet, LinkedList};
 
 use super::active_aly::req_active_analyze;
 
-pub fn pass(block: &mut super::ssa_form::SSABlock) {
+pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
+    let mut changed = false;
     let out = block
         .next
         .iter()
@@ -21,6 +22,7 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                     continue;
                 }
                 to_remove.push(i);
+                changed = true;
             } else {
                 panic!("No active analysis item found for instruction: {}", instr);
             }
@@ -33,4 +35,5 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
     for i in to_remove.iter().rev() {
         block.block.instrs.remove(*i);
     }
+    changed
 }

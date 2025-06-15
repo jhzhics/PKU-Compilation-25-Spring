@@ -16,10 +16,22 @@ use super::ssa_form;
 use super::ssa_pass2;
 
 pub fn pass(func: &mut ssa_pass2::SSAFunc) {
-    func.blocks.iter_mut().for_each(|(_, block)| {
-        constant_opt::pass(block);
-        cse_opt::pass(block);
-        repl_elm::pass(block);
-        dce_opt::pass(block);
-    });
+    let mut modified = true;
+    while modified {
+        modified = false;
+        for (_, block) in func.blocks.iter_mut() {
+            if constant_opt::pass(block) {
+                modified = true;
+            }
+            if cse_opt::pass(block) {
+                modified = true;
+            }
+            if repl_elm::pass(block) {
+                modified = true;
+            }
+            if dce_opt::pass(block) {
+                modified = true;
+            }
+        }
+    }
 }

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-pub fn pass(block: &mut super::ssa_form::SSABlock) {
+pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
+    let mut changed = false;
     let mut mapping: HashMap<String, String> = HashMap::new();
     block.block.instrs.iter().for_each(|instr| {
         if instr.op == "mv" {
@@ -20,6 +21,7 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
     for (old, new) in mapping.iter() {
         super::ssa_pass2::block_substitute_var(block, &old, &new);
     }
+    let old_len = block.block.instrs.len();
     block.block.instrs.retain(|instr| {
         if instr.op == "mv" {
             assert!(
@@ -33,4 +35,8 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
             true // Keep all other instructions
         }
     });
+    if old_len != block.block.instrs.len() {
+        changed = true;
+    }
+    changed
 }

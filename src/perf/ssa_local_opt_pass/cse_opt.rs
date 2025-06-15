@@ -22,7 +22,7 @@ impl PartialEq for Instr {
                 return false;
             }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
-            || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
+                || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
         } else if self.op == "seqz" {
             assert!(
                 self.operands.len() == 2,
@@ -31,7 +31,6 @@ impl PartialEq for Instr {
             );
             if other.op != "seqz" {
                 return false;
-                
             }
             self.operands[1] == other.operands[1]
         } else if self.op == "add" {
@@ -44,7 +43,7 @@ impl PartialEq for Instr {
                 return false;
             }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
-            || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
+                || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
         } else if self.op == "sub" {
             assert!(
                 self.operands.len() == 3,
@@ -65,7 +64,7 @@ impl PartialEq for Instr {
                 return false;
             }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
-            || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
+                || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
         } else if self.op == "div" {
             assert!(
                 self.operands.len() == 3,
@@ -94,8 +93,7 @@ impl PartialEq for Instr {
             );
             if other.op == "slt" {
                 self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
-            }
-            else if other.op == "sgt" {
+            } else if other.op == "sgt" {
                 self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
             } else {
                 false
@@ -108,8 +106,7 @@ impl PartialEq for Instr {
             );
             if other.op == "sgt" {
                 self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
-            }
-            else if other.op == "slt" {
+            } else if other.op == "slt" {
                 self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
             } else {
                 false
@@ -238,9 +235,9 @@ fn is_expr_instr(instr: &Instr) -> bool {
     }
 }
 
-pub fn pass(block: &mut super::ssa_form::SSABlock) {
+pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
     let mut exprs: Vec<Instr> = Vec::new();
-
+    let mut changed = false;
     block.block.instrs.iter_mut().for_each(|instr| {
         if is_expr_instr(instr) {
             // Check if the instruction is already in the list of expressions
@@ -248,9 +245,11 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) {
                 let old_rd = exprs[pos].operands[0].clone();
                 let new_rd = instr.operands[0].clone();
                 *instr = Instr::new(&format!("mv {}, {}", new_rd, old_rd));
+                changed = true;
             } else {
                 exprs.push(instr.clone());
             }
         }
     });
+    changed
 }
