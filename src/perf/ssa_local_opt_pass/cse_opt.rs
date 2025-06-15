@@ -2,14 +2,15 @@ use super::riscv::Instr;
 
 impl PartialEq for Instr {
     fn eq(&self, other: &Self) -> bool {
-        if self.op != other.op {
-            return false;
-        } else if self.op == "li" {
+        if self.op == "li" {
             assert!(
                 self.operands.len() == 2,
                 "li instruction must have exactly two operands: {}",
                 self
             );
+            if other.op != "li" {
+                return false;
+            }
             self.operands[1] == other.operands[1]
         } else if self.op == "xor" {
             assert!(
@@ -17,13 +18,21 @@ impl PartialEq for Instr {
                 "xor instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "xor" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
+            || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
         } else if self.op == "seqz" {
             assert!(
                 self.operands.len() == 2,
                 "seqz instruction must have exactly two operands: {}",
                 self
             );
+            if other.op != "seqz" {
+                return false;
+                
+            }
             self.operands[1] == other.operands[1]
         } else if self.op == "add" {
             assert!(
@@ -31,13 +40,20 @@ impl PartialEq for Instr {
                 "add instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "add" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
+            || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
         } else if self.op == "sub" {
             assert!(
                 self.operands.len() == 3,
                 "sub instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "sub" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
         } else if self.op == "mul" {
             assert!(
@@ -45,13 +61,20 @@ impl PartialEq for Instr {
                 "mul instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "mul" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
+            || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
         } else if self.op == "div" {
             assert!(
                 self.operands.len() == 3,
                 "div instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "div" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
         } else if self.op == "rem" {
             assert!(
@@ -59,6 +82,9 @@ impl PartialEq for Instr {
                 "rem instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "rem" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
         } else if self.op == "slt" {
             assert!(
@@ -66,20 +92,37 @@ impl PartialEq for Instr {
                 "slt instruction must have exactly three operands: {}",
                 self
             );
-            self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
+            if other.op == "slt" {
+                self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
+            }
+            else if other.op == "sgt" {
+                self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
+            } else {
+                false
+            }
         } else if self.op == "sgt" {
             assert!(
                 self.operands.len() == 3,
                 "sgt instruction must have exactly three operands: {}",
                 self
             );
-            self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
+            if other.op == "sgt" {
+                self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
+            }
+            else if other.op == "slt" {
+                self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
+            } else {
+                false
+            }
         } else if self.op == "xori" {
             assert!(
                 self.operands.len() == 3,
                 "xori instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "xori" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
         } else if self.op == "snez" {
             assert!(
@@ -87,6 +130,9 @@ impl PartialEq for Instr {
                 "snez instruction must have exactly two operands: {}",
                 self
             );
+            if other.op != "snez" {
+                return false;
+            }
             self.operands[1] == other.operands[1]
         } else if self.op == "and" {
             assert!(
@@ -94,6 +140,9 @@ impl PartialEq for Instr {
                 "and instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "and" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
         } else if self.op == "or" {
             assert!(
@@ -101,6 +150,9 @@ impl PartialEq for Instr {
                 "or instruction must have exactly three operands: {}",
                 self
             );
+            if other.op != "or" {
+                return false;
+            }
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
         } else if self.op == "sw" {
             assert!(
