@@ -1,16 +1,13 @@
 mod symtable;
 use super::ast::*;
 use ::koopa::ir::builder::*;
-use ::koopa::ir::values::Aggregate;
-use ::koopa::ir::{BasicBlock, TypeKind, Value, ValueKind};
-use koopa::back::koopa;
+use ::koopa::ir::{BasicBlock, TypeKind, Value};
 use symtable::{SymValue, VarSymbol};
 
 use ::koopa::ir as koopa_ir;
 use std::collections::LinkedList;
 use std::mem;
 use std::ops::Deref;
-use std::os::linux::raw::stat;
 
 type ValueList = LinkedList<koopa_ir::Value>;
 

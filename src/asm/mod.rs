@@ -1,18 +1,7 @@
 mod backend;
-use core::{alloc, panic};
-use koopa::{
-    back,
-    ir::{dfg::DataFlowGraph, entities::ValueData, layout::Layout, *},
-};
-use std::{
-    cell::RefCell,
-    clone,
-    collections::{HashMap, LinkedList},
-    fmt::format,
-    i32::MAX,
-    ops::{Deref, Index},
-    os::linux::raw::stat,
-};
+use core::panic;
+use koopa::ir::{dfg::DataFlowGraph, entities::ValueData, layout::Layout, *};
+use std::collections::{HashMap, LinkedList};
 
 static GLOB_MAX_OFFSET: i32 = (1 << 11) - 1;
 static GLOB_MIN_OFFSET: i32 = -(1 << 11);
@@ -73,6 +62,7 @@ impl Context<'_> {
         self.program
     }
 
+    #[allow(dead_code)]
     pub fn func(&self) -> &Function {
         self.func
     }
