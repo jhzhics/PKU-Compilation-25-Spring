@@ -3,6 +3,8 @@
 use std::collections::HashSet;
 use std::collections::LinkedList;
 
+use crate::perf::riscv;
+
 use super::riscv::Block;
 use super::riscv::Instr;
 
@@ -222,7 +224,12 @@ impl Instr {
             for i in 2..self.operands.len() {
                 self.operands[i] = f(self.operands[i].clone());
             }
-        } else {
+            // After this are instructions for riscv passes
+        } else if self.op == "call" 
+        {
+            assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
+        }
+        else {
             panic!("Unknown instruction: {}", self);
         }
     }
@@ -391,7 +398,13 @@ impl Instr {
                 self
             );
             self.operands[0] = f(self.operands[0].clone());
-        } else {
+            // After this are instructions for riscv passes
+        } else if self.op == "call" 
+        {
+            assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
+            self.operands[0] = f(self.operands[0].clone());
+        } else
+        {
             panic!("Unknown instruction: {}", self);
         }
     }
@@ -565,7 +578,16 @@ impl Instr {
                 self
             );
             vec![self.operands[0].clone()]
-        } else {
+            // After this are instructions for riscv passes
+        } else if self.op ==  "call"
+        {
+            assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
+            riscv::RV_CALLER_SAVE_REGS
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+        } else
+        {
             panic!("Unknown instruction: {}", self);
         }
     }
@@ -761,7 +783,20 @@ impl Instr {
                 self
             );
             self.operands[2..].to_vec()
-        } else {
+            // After this are instructions for riscv passes
+        } else if self.op == "call" 
+        {
+            assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
+            let argc = self.comment.trim().parse::<usize>().expect("Invalid argument count in call instruction comment");
+            assert!(argc <= 8, "Argument count must be <= 8 for call instruction: {}", argc);
+            [
+                "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"
+            ].iter()
+                .take(argc)
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+        } else
+        {
             panic!("Unknown instruction: {}", self);
         }
     }
