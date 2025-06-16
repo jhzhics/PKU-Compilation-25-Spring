@@ -130,7 +130,7 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
     let vertices_set = func.get_vertices_set();
     let goto_args = ssa_func.blocks[&ssa_func.entry].params.iter()
         .filter(|&arg| vertices_set.contains(arg))
-        .map(|arg| format!("{}_0", arg))
+        .map(|arg| format!("{}", arg))
         .collect::<Vec<String>>();
     prologue.next.push((
         ssa_func.entry.clone(),
@@ -145,14 +145,14 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
             prologue
                 .block
                 .instrs
-                .push(Instr::new(&format!("mv {}_0, a{}", arg, i)));
+                .push(Instr::new(&format!("mv {}, a{}", arg, i)));
         } else {
             let offset = 8 + 4 * (i - 8) as i32;
             let offset_reg = state.get_sp_offset_reg(offset, &mut prologue);
             prologue
                 .block
                 .instrs
-                .push(Instr::new(&format!("sw {}_0, {}", arg, offset_reg)));
+                .push(Instr::new(&format!("lw {}, {}", arg, offset_reg)));
         }
     }
     let tmp = state.get_write_tmp_reg();
@@ -426,7 +426,16 @@ impl RVPass1Func {
             instr.gen_vars().iter().cloned().chain(
                 instr.kill_vars().iter().cloned()
             ).collect::<Vec<_>>()
-        }).collect()
+        })
+        .chain(
+            self.blocks.values().flat_map(|block| block.params.iter().cloned())
+        )
+        .chain(
+            self.blocks.values().flat_map(|block| block.next.iter())
+                .flat_map(|(_name, ops)| {
+                    ops.iter().cloned()
+                })
+        ).collect()
     }
 
     #[allow(dead_code)]

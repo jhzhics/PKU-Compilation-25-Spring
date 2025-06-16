@@ -338,16 +338,16 @@ impl Pass1Append for Value {
                         context.program().borrow_value(ins.dest()).ty().kind()
                     {
                         assert!(
-                            t.is_i32(),
-                            "Store to a pointer that is not i32 is not supported in this pass"
+                            t.size() == 4,
+                            "Store to a pointer that is not 4 bytes is not supported in this pass"
                         );
                     } else {
                         panic!("Error! Store to a non-pointer type");
                     }
                 } else if let TypeKind::Pointer(t) = context.dfg().value(ins.dest()).ty().kind() {
                     assert!(
-                        t.is_i32(),
-                        "Store to a pointer that is not i32 is not supported in this pass"
+                        t.size() == 4,
+                        "Store to a pointer that is not 4 bytes is not supported in this pass"
                     );
                 } else {
                     panic!("Error! Store to a non-pointer type");
@@ -372,16 +372,16 @@ impl Pass1Append for Value {
                         context.program().borrow_value(ins.src()).ty().kind()
                     {
                         assert!(
-                            t.is_i32(),
-                            "Store to a pointer that is not i32 is not supported in this pass"
+                            t.size() == 4,
+                            "Store to a pointer that is not 4 bytes is not supported in this pass"
                         );
                     } else {
                         panic!("Error! Store to a non-pointer type");
                     }
                 } else if let TypeKind::Pointer(t) = context.dfg().value(ins.src()).ty().kind() {
                     assert!(
-                        t.is_i32(),
-                        "Store to a pointer that is not i32 is not supported in this pass"
+                        t.size() == 4,
+                        "Store to a pointer that is not 4 bytes is not supported in this pass"
                     );
                 } else {
                     panic!("Error! Store to a non-pointer type");
@@ -401,7 +401,7 @@ impl Pass1Append for Value {
 
             ValueKind::Alloc(_ins) => {
                 if let TypeKind::Pointer(t) = value_data.ty().kind() {
-                    if t.is_i32() {
+                    if t.size() == 4 {
                         let value_name = value_data
                             .name()
                             .as_ref()

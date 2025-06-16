@@ -75,9 +75,49 @@ fn try_shade(func: &mut RVPass1Func) -> Result<(), String> {
             .for_each(|conflict| shader.add_conflict(conflict));
     }
     
-    let color_map = shader.try_shade()?;
+    let hints = func.get_hint_regs();
+    let color_map = shader.try_shade(&Some(hints))?;
     func.substitute_vars(&color_map);
     Ok(())
+}
+
+impl rv_pass1::RVPass1Func {
+    pub fn get_hint_regs(&self) -> HashMap<String, HashSet<String>> {
+        let mut hints: HashMap<String, HashSet<String>> = HashMap::new();
+        for block in self.blocks.values() {
+            for instr in &block.block.instrs {
+                if instr.op == "mv"
+                {
+                    hints.entry(instr.operands[0].clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(instr.operands[1].clone());
+                    hints.entry(instr.operands[1].clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(instr.operands[0].clone());
+                }
+            }
+        }
+        for block in self.blocks.values() {
+            for (next_name, args) in &block.next {
+                let next_params = self.blocks.get(next_name)
+                    .expect("Next block not found in RVPass1Func")
+                    .params
+                    .clone();
+                assert!(args.len() == next_params.len(),
+                    "Next block args and params length mismatch: {} vs {}",
+                    args.len(), next_params.len());
+                for (arg, param) in args.iter().zip(next_params.iter()) {
+                    hints.entry(param.clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(arg.clone());
+                    hints.entry(arg.clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(param.clone());
+                }
+            }
+        }
+        hints
+    }
 }
 
 impl rv_pass1::RVPass1Block {

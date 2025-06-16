@@ -24,13 +24,19 @@ impl Shader {
         }
     }
 
-    fn get_available_color(&self, current_color_map: &HashMap<String, String>, vertex: &String) -> Option<String> {
+    fn get_available_color(&self, current_color_map: &HashMap<String, String>, vertex: &String
+    , hint_colors: &HashSet<String>) -> Option<String> {
         let mut used_colors: HashSet<String> = HashSet::new();
         if let Some(neighbors) = self.edges.get(vertex) {
             for neighbor in neighbors {
                 if let Some(color) = current_color_map.get(neighbor) {
                     used_colors.insert(color.clone());
                 }
+            }
+        }
+        for color in hint_colors {
+            if !used_colors.contains(color) {
+                return Some(color.clone());
             }
         }
 
@@ -51,16 +57,24 @@ impl Shader {
     /// # Returns
     /// If successful, returns a HashMap with a color map
     /// If not successful, returns a virtual register with the greatest degree
-    pub fn try_shade(&self) -> Result<HashMap<String, String>, String> {
+    pub fn try_shade(&self, hints: &Option<HashMap<String, HashSet<String>>>) -> Result<HashMap<String, String>, String> {
         // Prepare the color order based on the degree of vertices
         let color_order = self.get_color_order();
         let mut color_map: HashMap<String, String> = Self::get_real_regs()
             .iter()
             .map(|s| (s.to_string(), s.to_string()))
             .collect();
-
         for vertex in color_order {
-            if let Some(color) = self.get_available_color(&color_map, &vertex) {
+            let hint_regs = hints.as_ref().and_then(|h| h.get(&vertex))
+                .cloned().unwrap_or_default();
+            let hint_colors = hint_regs.iter()
+                .filter_map(|reg| {
+                    color_map.get(reg)
+                })
+                .cloned()
+                .collect::<HashSet<String>>();
+            
+            if let Some(color) = self.get_available_color(&color_map, &vertex, &hint_colors) {
                 color_map.insert(vertex, color);
             } else {
                 return Err(self.get_spill_vertices());

@@ -43,6 +43,12 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .map(|f| rv_pass1::pass(f))
         .collect::<Vec<rv_pass1::RVPass1Func>>();
 
+    // rv_pass1_funcs.iter().for_each(|f| {
+    //     f.dump().iter().for_each(|s| {
+    //         println!("{}", s);
+    //     });
+    // });
+
     rv_pass1_funcs.iter_mut().for_each(|f| {
         rv_pass2::pass(f);
     });
