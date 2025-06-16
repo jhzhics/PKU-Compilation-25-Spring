@@ -18,6 +18,7 @@ pub struct SSAFunc {
 }
 
 impl SSAFunc {
+    #[allow(dead_code)]
     pub fn dump(&self) -> LinkedList<String> {
         let mut inst_list: LinkedList<String> = LinkedList::new();
         inst_list.push_back(format!("{}({}):", self.name, self.args.join(", ")));
@@ -40,7 +41,7 @@ impl SSAFunc {
     }
 }
 
-pub fn pass(func: ssa_pass1::Pass1Func) -> SSAFunc {
+pub fn pass(func: ssa_pass1::SSAPass1Func) -> SSAFunc {
     let mut pass2func = SSAFunc {
         blocks: HashMap::new(),
         name: func.name,

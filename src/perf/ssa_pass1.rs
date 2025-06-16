@@ -9,13 +9,13 @@ use crate::perf::riscv::Instr;
 use super::riscv;
 
 #[derive(Debug, Clone)]
-pub struct Pass1Func {
-    pub blocks: HashMap<String, Pass1Block>,
+pub struct SSAPass1Func {
+    pub blocks: HashMap<String, SSAPass1Block>,
     pub name: String,
     pub entry: Option<String>,
     pub args: Vec<String>,
 }
-impl Pass1Func {
+impl SSAPass1Func {
     #[allow(dead_code)]
     pub fn dump(&self) -> LinkedList<String> {
         let mut inst_list: LinkedList<String> = LinkedList::new();
@@ -44,12 +44,12 @@ impl Pass1Func {
 }
 
 #[derive(Debug, Clone)]
-pub struct Pass1Block {
+pub struct SSAPass1Block {
     pub block: riscv::Block,
     pub next: Vec<String>,
 }
 
-impl Pass1Block {
+impl SSAPass1Block {
     fn push_instr(&mut self, instr: &str) {
         self.block.instrs.push(Instr::new(instr));
     }
@@ -102,7 +102,7 @@ impl Pass1State {
 }
 
 trait Pass1Append {
-    fn append(&self, context: &Pass1Context, block: &mut Pass1Block, state: &mut Pass1State);
+    fn append(&self, context: &Pass1Context, block: &mut SSAPass1Block, state: &mut Pass1State);
 }
 
 struct Pass1Context<'a> {
@@ -140,7 +140,7 @@ impl Pass1Context<'_> {
     }
 }
 
-pub fn pass(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func {
+pub fn pass(prog: &koopa::ir::Program, func: koopa::ir::Function) -> SSAPass1Func {
     let context = Pass1Context::new(prog, &func);
     let mut global_state = Pass1State {
         temp_allocator: TempAllocator::new(),
@@ -148,7 +148,7 @@ pub fn pass(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func {
         global_vars: HashSet::new(),
     };
 
-    let mut pass1_func = Pass1Func {
+    let mut pass1_func = SSAPass1Func {
         blocks: HashMap::new(),
         name: context.func_data().name().to_string(),
         entry: None,
@@ -187,7 +187,7 @@ pub fn pass(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func {
             .name()
             .as_ref()
             .expect("Block name should be set")[1..];
-        let mut pass1_block = Pass1Block {
+        let mut pass1_block = SSAPass1Block {
             block: riscv::Block::new(format!("L{}", block_name.to_string())),
             next: Vec::new(),
         };
@@ -228,7 +228,7 @@ pub fn pass(prog: &koopa::ir::Program, func: koopa::ir::Function) -> Pass1Func {
 
 fn load_integer(
     value: &Value,
-    block: &mut Pass1Block,
+    block: &mut SSAPass1Block,
     context: &Pass1Context,
     state: &mut Pass1State,
 ) -> String {
@@ -243,7 +243,7 @@ fn load_integer(
 }
 
 impl Pass1Append for Value {
-    fn append(&self, context: &Pass1Context, block: &mut Pass1Block, state: &mut Pass1State) {
+    fn append(&self, context: &Pass1Context, block: &mut SSAPass1Block, state: &mut Pass1State) {
         let mut get_value_reg = |value: Value, is_write: bool| -> String {
             if value.is_global() {
                 let value_data = context.program().borrow_value(value);

@@ -2,6 +2,7 @@ mod active_aly;
 mod dbe_pass;
 mod misc;
 mod riscv;
+mod rv_pass1;
 mod ssa_form;
 mod ssa_local_opt_pass;
 mod ssa_pass1;
@@ -19,13 +20,13 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .funcs()
         .iter()
         .map(|(f, _)| ssa_pass1::pass(&prog, f.clone()))
-        .collect::<Vec<ssa_pass1::Pass1Func>>();
+        .collect::<Vec<ssa_pass1::SSAPass1Func>>();
 
     let mut ssa_pass1funcs = pass1funcs
         .iter()
         .cloned()
         .filter(|f| f.entry.is_some())
-        .collect::<Vec<ssa_pass1::Pass1Func>>();
+        .collect::<Vec<ssa_pass1::SSAPass1Func>>();
 
     ssa_pass1funcs.iter_mut().for_each(|f| dbe_pass::pass(f));
 
@@ -35,7 +36,12 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .map(|f| ssa_pass2::pass(f.clone()))
         .collect::<Vec<ssa_pass2::SSAFunc>>();
 
-    ssa_funcs.iter().for_each(|func| {
+    let rv_pass1_funcs = ssa_funcs
+        .iter()
+        .map(|f| rv_pass1::pass(f))
+        .collect::<Vec<rv_pass1::RVPass1Func>>();
+
+    rv_pass1_funcs.iter().for_each(|func| {
         inst_list.extend(func.dump());
         inst_list.push_back("".to_string());
     });

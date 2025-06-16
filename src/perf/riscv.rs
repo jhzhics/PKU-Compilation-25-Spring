@@ -1,13 +1,52 @@
 use std::{collections::LinkedList, fmt::Display};
 
+#[allow(dead_code)]
+pub const RV_CALLER_SAVE_REGS: [&str; 15] = [
+    "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "t1", "t2", "t3", "t4", "t5", "t6",
+];
+#[allow(dead_code)]
+pub const RV_CALLEE_SAVE_REGS: [&str; 12] = [
+    "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11",
+];
+#[allow(dead_code)]
+pub const RA_REG: &str = "ra";
+
+#[allow(dead_code)]
+pub const RV_SP_REG: &str = "sp";
+
+#[allow(dead_code)]
+pub const RV_ZERO_REG: &str = "zero";
+
+#[allow(dead_code)]
+pub fn is_real_reg(name: &str) -> bool {
+    RV_CALLER_SAVE_REGS.contains(&name)
+        || RV_CALLEE_SAVE_REGS.contains(&name)
+        || name == RA_REG
+        || name == RV_SP_REG
+        || name == RV_ZERO_REG
+}
+
+pub const TMP_REG: &str = "rv_pass_tmp";
+
 #[derive(Debug, Clone)]
 pub struct Instr {
     pub op: String,
     pub operands: Vec<String>,
+    #[allow(dead_code)]
+    pub comment: String,
+}
+
+pub fn fit_in_imm12(value: i32) -> bool {
+    value >= -2048 && value <= 2047
 }
 
 impl Instr {
     pub fn new(s: &str) -> Self {
+        let (s, comment) = if let Some(idx) = s.find('#') {
+            (&s[..idx], s[idx + 1..].trim().to_string())
+        } else {
+            (s, String::new())
+        };
         let mut operands = Vec::new();
         let mut parts = s.split(',');
         let mut part1 = parts
@@ -38,7 +77,11 @@ impl Instr {
             );
             operands.push(trimmed.to_string());
         }
-        Instr { op, operands }
+        Instr {
+            op,
+            operands,
+            comment,
+        }
     }
 
     pub fn is_side_effecting(&self) -> bool {
@@ -76,7 +119,7 @@ impl Block {
             instrs: Vec::new(),
         }
     }
-
+    #[allow(dead_code)]
     pub fn dump(&self) -> LinkedList<String> {
         let mut inst_list = LinkedList::new();
         inst_list.push_back(format!("{}:", self.name));

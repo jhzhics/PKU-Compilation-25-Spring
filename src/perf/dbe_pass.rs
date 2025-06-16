@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use super::riscv::Instr;
 use super::ssa_pass1;
 
-pub fn pass(func: &mut ssa_pass1::Pass1Func) {
+pub fn pass(func: &mut ssa_pass1::SSAPass1Func) {
     let mut modified = true;
     while modified {
         modified = false;
@@ -22,7 +22,7 @@ pub fn pass(func: &mut ssa_pass1::Pass1Func) {
     }
 }
 
-fn block_merge_eliminate(func: &mut ssa_pass1::Pass1Func) -> bool {
+fn block_merge_eliminate(func: &mut ssa_pass1::SSAPass1Func) -> bool {
     let mut modified = false;
     let mut prev: HashMap<String, Vec<String>> = HashMap::new();
     let mut reachable: HashSet<String> = HashSet::new();
@@ -99,9 +99,9 @@ fn block_merge_eliminate(func: &mut ssa_pass1::Pass1Func) -> bool {
 }
 
 fn merge_block(
-    prev_block: &ssa_pass1::Pass1Block,
-    next_block: &ssa_pass1::Pass1Block,
-) -> ssa_pass1::Pass1Block {
+    prev_block: &ssa_pass1::SSAPass1Block,
+    next_block: &ssa_pass1::SSAPass1Block,
+) -> ssa_pass1::SSAPass1Block {
     let mut merged_block = prev_block.clone();
     merged_block.block.instrs.pop(); // Remove the jmp instruction from the previous block
     merged_block
@@ -115,7 +115,7 @@ fn merge_block(
 /// This function eliminates dead branches in a basic block by performing constant propagation
 /// # Returns
 /// Returns true if the last instruction is a branch and it can be determined to be dead, false otherwise.
-fn eliminate_dead_branches(block: &mut ssa_pass1::Pass1Block) -> bool {
+fn eliminate_dead_branches(block: &mut ssa_pass1::SSAPass1Block) -> bool {
     let last_inst = block
         .block
         .instrs
