@@ -1,4 +1,4 @@
-mod active_aly;
+mod ssa_active_aly;
 mod dbe_pass;
 mod misc;
 mod riscv;
@@ -8,6 +8,7 @@ mod ssa_pass1;
 mod ssa_pass2;
 mod rv_pass1;
 mod rv_pass2;
+mod rv_active_aly;
 
 use koopa;
 use std::collections::LinkedList;

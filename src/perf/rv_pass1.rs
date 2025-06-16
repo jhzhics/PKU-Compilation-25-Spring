@@ -2,7 +2,7 @@
 //! The main purpose is convert the virtual "Call" to "call"
 
 use std::cmp::max;
-use std::collections::LinkedList;
+use std::collections::{HashMap, HashSet, LinkedList};
 
 use crate::perf::riscv::fit_in_imm12;
 use crate::perf::rv_pass1;
@@ -14,7 +14,7 @@ use super::ssa_pass2;
 #[derive(Debug, Clone)]
 pub struct RVPass1Func {
     pub name: String,
-    pub blocks: Vec<RVPass1Block>,
+    pub blocks: HashMap<String, RVPass1Block>,
     pub args: Vec<String>,
     pub is_return_i32: bool,
     stack_size: usize,
@@ -29,6 +29,7 @@ pub struct RVPass1Func {
 pub struct RVPass1Block {
     pub block: riscv::Block,
     pub next: Vec<(String, Vec<String>)>, // Next blocks, with operands
+    pub prev: Vec<String>, // Previous blocks, with operands
     pub params: Vec<String>,
 }
 
@@ -84,7 +85,7 @@ fn get_func_call_args(ssa_func: &ssa_pass2::SSAFunc) -> Option<usize> {
 pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
     let mut func = RVPass1Func {
         name: ssa_func.name[1..].to_string(), // Remove the leading '@'
-        blocks: Vec::new(),                   // To be updated with blocks
+        blocks: HashMap::new(),                   // To be updated with blocks
         args: ssa_func.args.clone(),
         is_return_i32: get_is_return_i32(ssa_func),
         stack_size: 0, // To be updated with stack size
@@ -100,7 +101,10 @@ pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
         );
     for (_, block) in &ssa_func.blocks {
         let rv_block = transform_block(block, &mut state, &func.epilogue);
-        func.blocks.push(rv_block);
+        func.blocks.insert(
+            rv_block.block.name.clone(),
+            rv_block,
+        );
     }
     func.stack_size = state.stack_size as usize;
     fill_prologue(&mut func, ssa_func, &mut state);
@@ -109,6 +113,10 @@ pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
 }
 
 fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &mut State) {
+    let entry_block = func.blocks.get_mut(&ssa_func.entry)
+        .expect("Entry block should exist in RVPass1Func");
+    entry_block.prev.push(func.prologue.clone());
+
     state.reset_tmp_reg();
     let mut prologue = rv_pass1::RVPass1Block {
         block: riscv::Block {
@@ -116,9 +124,12 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
             instrs: Vec::new(),
         },
         next: Vec::new(),
+        prev: Vec::new(),
         params: Vec::new(),
     };
+    let vertices_set = func.get_vertices_set();
     let goto_args = ssa_func.blocks[&ssa_func.entry].params.iter()
+        .filter(|&arg| vertices_set.contains(arg))
         .map(|arg| format!("{}_0", arg))
         .collect::<Vec<String>>();
     prologue.next.push((
@@ -127,6 +138,9 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
     ));
 
     for (i, arg) in func.args.iter().enumerate() {
+        if !vertices_set.contains(arg) {
+            continue; // Skip arguments that are not used in the function
+        }
         if i < 8 {
             prologue
                 .block
@@ -158,7 +172,21 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
         "j {}",
         ssa_func.entry.clone()
     )));
-    func.blocks.insert(0, prologue);
+    func.blocks.insert(
+        prologue.block.name.clone(),
+        prologue,
+    );
+    let filterd_entry_params = ssa_func.blocks[&ssa_func.entry]
+        .params
+        .iter()
+        .filter(|& arg| vertices_set.contains(arg))
+        .cloned()
+        .collect::<Vec<String>>();
+
+    func.blocks.get_mut(&ssa_func.entry)
+        .expect("Entry block should exist in RVPass1Func")
+        .params = filterd_entry_params;
+
 }
 
 fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc, state: &mut State) {
@@ -169,8 +197,20 @@ fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc, state: 
             instrs: Vec::new(),
         },
         next: vec![],
+        prev: vec![],
         params: Vec::new(),
     };
+    epilogue.prev = func.blocks
+        .values()
+        .filter_map(|block| {
+            if block.next.iter().any(|(name, _)| name == &func.epilogue) {
+                Some(block.block.name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let tmp = state.get_write_tmp_reg();
     epilogue.block.instrs.push(Instr::new(&format!(
         "li {}, {}",
@@ -192,7 +232,10 @@ fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc, state: 
     else {
         epilogue.block.instrs.push(Instr::new("Ret"));
     }
-    func.blocks.push(epilogue);
+    func.blocks.insert(
+        epilogue.block.name.clone(),
+        epilogue,
+    );
 }
 
 struct State {
@@ -275,6 +318,7 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
             instrs: Vec::new(),
         },
         next: block.next.clone(),
+        prev: block.prev.clone(),
         params: block.params.clone(),
     };
 
@@ -374,13 +418,24 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
 }
 
 impl RVPass1Func {
+    pub fn get_vertices_set(&self) -> HashSet<String> {
+        self.blocks
+        .values()
+        .flat_map(|block| block.block.instrs.iter())
+        .flat_map(|instr| {
+            instr.gen_vars().iter().cloned().chain(
+                instr.kill_vars().iter().cloned()
+            ).collect::<Vec<_>>()
+        }).collect()
+    }
+
     #[allow(dead_code)]
     pub fn dump(&self) -> LinkedList<String> {
         let mut inst_list = LinkedList::new();
         inst_list.push_back(format!(".text"));
         inst_list.push_back(format!(".globl {}", self.name));
         inst_list.push_back(format!("{}:", self.name));
-        for block in &self.blocks {
+        for (_, block) in &self.blocks {
             inst_list.push_back(format!(
                 "{}({}):",
                 block.block.name,

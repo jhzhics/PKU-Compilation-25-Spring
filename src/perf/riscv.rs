@@ -1,13 +1,14 @@
 use std::{collections::LinkedList, fmt::Display};
 
-#[allow(dead_code)]
+
 pub const RV_CALLER_SAVE_REGS: [&str; 15] = [
     "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "t1", "t2", "t3", "t4", "t5", "t6",
 ];
-#[allow(dead_code)]
+
 pub const RV_CALLEE_SAVE_REGS: [&str; 12] = [
     "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11",
 ];
+
 #[allow(dead_code)]
 pub const RA_REG: &str = "ra";
 
@@ -85,8 +86,8 @@ impl Instr {
     pub fn is_side_effecting(&self) -> bool {
         match self.op.as_str() {
             "li" | "xor" | "seqz" | "add" | "sub" | "mul" | "div" | "rem" | "slt" | "sgt"
-            | "xori" | "snez" | "and" | "or" | "mv" | "la" | "lw" => false,
-            "sw" | "j" | "Ret" | "Alloc" | "Br" | "Call_1" | "Call_2" => true,
+            | "xori" | "snez" | "and" | "or" | "mv" | "la" | "lw" | "Alloc" => false,
+            "sw" | "j" | "Ret" | "Br" | "Call_1" | "Call_2" => true,
             _ => panic!("Unknown instruction in is_side_effecting: {}", self.op),
         }
     }

@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::collections::LinkedList;
 
 use crate::perf::riscv;
-
-use super::riscv::Block;
+use super::rv_pass1::RVPass1Block;
+use super::rv_pass1::RVPass1Func;
 use super::riscv::Instr;
 
 // Extracts the number and register from a memory operand string.
@@ -26,6 +26,7 @@ fn extract_register_from_mem_operand(operand_str: &str) -> Option<(String, Strin
     }
     None
 }
+
 
 impl Instr {
     pub fn map_read_vars(&mut self, mut f: impl FnMut(String) -> String) {
@@ -402,7 +403,6 @@ impl Instr {
         } else if self.op == "call" 
         {
             assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
-            self.operands[0] = f(self.operands[0].clone());
         } else
         {
             panic!("Unknown instruction: {}", self);
@@ -803,60 +803,65 @@ impl Instr {
 }
 
 pub fn active_analyze(
-    block: &Block,
+    func: &RVPass1Func,
+    block: &RVPass1Block,
     out: HashSet<String>,
     conflicts: Option<&mut LinkedList<HashSet<String>>>,
 ) -> HashSet<String> {
-    let mut binding = LinkedList::new();
-    let conflicts = conflicts.unwrap_or(&mut binding);
-    let mut now = out.clone();
-    conflicts.clear();
-    conflicts.push_back(now.clone());
-    for i in (0..block.instrs.len()).rev() {
-        let instr = &block.instrs[i];
+    let mut bindings = LinkedList::new();
+    let conflicts = conflicts.unwrap_or(&mut bindings);
+    let mut now = out;
+    let out_kill = block.next.iter().map(|(name, _)| {
+        let next_block = func.blocks.get(name).expect("Next block not found");
+        next_block.params.iter().cloned().collect::<HashSet<String>>()
+    }).collect::<Vec<HashSet<String>>>();
+    let out_kill = out_kill.into_iter().fold(HashSet::new(), |acc, set| {
+        acc.intersection(&set).cloned().collect::<HashSet<String>>()
+    });
+    let out_gen = block.next.iter().flat_map(|(_, params)| params.iter().cloned())
+        .collect::<HashSet<String>>();
+
+    conflicts.push_front(now.clone());
+    for var in out_kill {
+        now.remove(&var);
+    }
+    for var in out_gen {
+        now.insert(var);
+    }
+    conflicts.push_front(now.clone());
+    for i in (0..block.block.instrs.len()).rev() {
+        let instr = &block.block.instrs[i];
         let kill_vars = instr.kill_vars();
         let gen_vars = instr.gen_vars();
+        let mut old_now = None;
+        if instr.op == "call" {
+            old_now = Some(now.clone());
+        }
+
         for var in kill_vars {
+            if var == riscv::RV_SP_REG {
+                continue;
+            }
             now.remove(&var);
         }
-
         for var in gen_vars {
+            if var == riscv::RV_SP_REG {
+                continue;
+            }
             now.insert(var);
         }
-
-        conflicts.push_back(now.clone());
-    }
-    now
-}
-
-pub fn req_active_analyze(
-    block: &Block,
-    out: HashSet<String>,
-    actives: Option<&mut LinkedList<HashSet<String>>>,
-) -> HashSet<String> {
-    // This function is similar to `active_analyze`, but it does not deem value not needed as active
-    let mut binding = LinkedList::new();
-    let actives = actives.unwrap_or(&mut binding);
-    let mut now = out.clone();
-    actives.clear();
-    actives.push_back(now.clone());
-    for i in (0..block.instrs.len()).rev() {
-        let instr = &block.instrs[i];
-        let kill_vars = instr.kill_vars();
-        let gen_vars = instr.gen_vars();
-        let mut killed = true;
-        assert!(kill_vars.len() <= 1, "Kill variables must <= 1");
-        for var in kill_vars {
-            killed = now.remove(&var);
-        }
-
-        if killed || instr.is_side_effecting() {
-            for var in gen_vars {
-                now.insert(var);
+        if let Some(old_now) = old_now {
+            let survived = now.intersection(&old_now).cloned().collect::<HashSet<String>>();
+            for caller_saved in riscv::RV_CALLER_SAVE_REGS {
+                for survive_var in &survived {
+                    conflicts.push_front(
+                        vec![caller_saved.to_string(), survive_var.clone()].into_iter().collect()
+                    );
+                }
             }
         }
-
-        actives.push_front(now.clone());
+        
+        conflicts.push_front(now.clone());
     }
     now
 }

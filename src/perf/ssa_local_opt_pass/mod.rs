@@ -10,7 +10,7 @@ pub mod cse_opt;
 pub mod dce_opt;
 pub mod repl_elm;
 
-use super::active_aly;
+use super::ssa_active_aly;
 use super::riscv;
 use super::ssa_form;
 use super::ssa_pass2;

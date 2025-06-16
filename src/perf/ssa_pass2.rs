@@ -1,7 +1,7 @@
 //! This module implements the second pass of the SSA form transformation.
 //! Also will do local optimizations on the SSA form.
 
-use super::active_aly;
+use super::ssa_active_aly;
 use super::ssa_form::SSABlock;
 use super::ssa_local_opt_pass;
 use super::ssa_pass1;
@@ -121,7 +121,7 @@ fn phase1_analyze_params(func: &mut SSAFunc) {
             .cloned()
             .collect::<HashSet<String>>();
         let block = func.blocks.get_mut(&head).expect("Block should exist");
-        let block_in = active_aly::active_analyze(&block.block, out, None);
+        let block_in = ssa_active_aly::active_analyze(&block.block, out, None);
         if block_in != block.params.iter().cloned().collect::<HashSet<String>>()
         {
             block.params = block_in.iter().cloned().collect::<Vec<_>>();

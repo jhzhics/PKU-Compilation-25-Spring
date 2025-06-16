@@ -1,6 +1,6 @@
 use std::collections::{HashSet, LinkedList};
 
-use super::active_aly::req_active_analyze;
+use super::ssa_active_aly::req_active_analyze;
 
 pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
     let mut changed = false;

@@ -10,16 +10,17 @@ struct Item
 }
 
 #[derive(Debug)]
-struct Shader {
+pub struct Shader {
     edges: HashMap<String, Vec<String>>,
     vertices: HashSet<String>,
 }
 
 impl Shader {
     pub fn new(vertices: HashSet<String>) -> Self {
+        let real_regs = Self::get_real_regs();
         Shader {
             edges: HashMap::new(),
-            vertices,
+            vertices: vertices.iter().chain(real_regs.iter()).cloned().collect(),
         }
     }
 
@@ -51,8 +52,13 @@ impl Shader {
     /// If successful, returns a HashMap with a color map
     /// If not successful, returns a virtual register with the greatest degree
     pub fn try_shade(&self) -> Result<HashMap<String, String>, String> {
+        // Prepare the color order based on the degree of vertices
         let color_order = self.get_color_order();
-        let mut color_map: HashMap<String, String> = HashMap::new();
+        let mut color_map: HashMap<String, String> = Self::get_real_regs()
+            .iter()
+            .map(|s| (s.to_string(), s.to_string()))
+            .collect();
+
         for vertex in color_order {
             if let Some(color) = self.get_available_color(&color_map, &vertex) {
                 color_map.insert(vertex, color);
@@ -61,14 +67,15 @@ impl Shader {
             }
         }
         assert!(color_map.len() == self.vertices.len(), "Color map size mismatch");
+        color_map.insert(riscv::RV_SP_REG.to_string(), riscv::RV_SP_REG.to_string());
         Ok(color_map)
     }
 
 
-    pub fn add_conflict(&mut self, conflict: HashSet<String>) {
-        for from in &conflict {
+    pub fn add_conflict(&mut self, conflict: &HashSet<String>) {
+        for from in conflict {
             assert!(self.vertices.contains(from), "Vertex not in graph: {}", from);
-            for to in &conflict {
+            for to in conflict {
                 if from == to {
                     continue; // Skip self-loops
                 }
@@ -96,13 +103,27 @@ impl Shader {
         spill_vertex
     }
 
-    fn get_color_order(&self) -> Vec<String> {
-        let mut degree_map: HashMap<String, usize> = self.vertices
+    fn get_real_regs() -> HashSet<String> {
+        riscv::RV_CALLER_SAVE_REGS
             .iter()
-            .map(|v| {
-                let degree = self.edges.get(v).map_or(0, |neighbors| neighbors.len());
-                (v.clone(), degree)
-            })
+            .chain(riscv::RV_CALLEE_SAVE_REGS.iter())
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    fn get_color_order(&self) -> Vec<String> {
+        let real_regs = Self::get_real_regs();
+
+        let vertices: HashSet<String> = self
+            .vertices
+            .iter()
+            .filter(|v| !real_regs.contains(*v))
+            .cloned()
+            .collect();
+
+        let mut degree_map: HashMap<String, usize> = vertices
+            .iter()
+            .map(|v| (v.clone(), 0))
             .collect();
         let mut priority_queue = degree_map
             .iter()
@@ -130,7 +151,6 @@ impl Shader {
             }
             degree_map.remove(&name);
         }
-        assert!(color_order.len() == self.vertices.len(), "Color order length mismatch");
         color_order
     }
 }
