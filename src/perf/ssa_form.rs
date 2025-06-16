@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashSet, LinkedList},
+    collections::LinkedList,
     fmt::Display,
 };
 
@@ -10,7 +10,7 @@ pub struct SSABlock {
     pub block: Block,
     pub prev: Vec<String>,                // (name, operands)
     pub next: Vec<(String, Vec<String>)>, // (name, operands)
-    pub params: HashSet<String>,          // parameters
+    pub params: Vec<String>, // Parameters for the block
 }
 
 impl SSABlock {
@@ -25,7 +25,7 @@ impl SSABlock {
             block: Block::new(name),
             prev: Vec::new(),
             next: Vec::new(),
-            params: HashSet::new(),
+            params: Vec::new(),
         }
     }
 

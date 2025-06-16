@@ -122,8 +122,9 @@ fn phase1_analyze_params(func: &mut SSAFunc) {
             .collect::<HashSet<String>>();
         let block = func.blocks.get_mut(&head).expect("Block should exist");
         let block_in = active_aly::active_analyze(&block.block, out, None);
-        if block_in != block.params {
-            block.params = block_in;
+        if block_in != block.params.iter().cloned().collect::<HashSet<String>>()
+        {
+            block.params = block_in.iter().cloned().collect::<Vec<_>>();
             modified_set.extend(block.prev.iter().cloned());
         }
     }
@@ -197,7 +198,7 @@ fn number_ssa_block(block: &mut SSABlock, state: &mut HashMap<String, usize>) {
         .params
         .iter()
         .map(|var| number_read(var, state))
-        .collect::<HashSet<String>>();
+        .collect::<Vec<_>>();
 
     block.block.instrs.iter_mut().for_each(|inst| {
         inst.map_read_vars(|var| number_read(&var, state));
@@ -224,7 +225,7 @@ pub fn block_substitute_var(block: &mut SSABlock, old_var: &str, new_var: &str) 
                 var.clone()
             }
         })
-        .collect::<HashSet<String>>();
+        .collect::<Vec<_>>();
     block.block.instrs.iter_mut().for_each(|inst| {
         inst.map_read_vars(|var| {
             if var == old_var {

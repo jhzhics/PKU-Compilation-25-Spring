@@ -27,11 +27,19 @@ pub struct RVPass1Func {
 #[derive(Debug, Clone)]
 pub struct RVPass1Block {
     pub block: riscv::Block,
-    pub next: Vec<String>,
+    pub next: Vec<(String, Vec<String>)>, // Next blocks, with operands
+    pub params: Vec<String>,
 }
 
-static mut TMP_REG_OFFSET: Option<i32> = None;
+
 use riscv::TMP_REG;
+static mut TMP_REG_OFFSET: Option<i32> = None;
+
+fn reset_tmp_reg_offset() {
+    unsafe {
+        TMP_REG_OFFSET = None; // Reset the temporary register offset
+    }
+}
 
 fn get_sp_offset_reg(offset: i32, block: &mut RVPass1Block) -> String {
     if fit_in_imm12(offset) {
@@ -126,9 +134,7 @@ fn get_func_call_args(ssa_func: &ssa_pass2::SSAFunc) -> Option<usize> {
 }
 
 pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
-    unsafe {
-        TMP_REG_OFFSET = None; // Reset the temporary register offset
-    }
+    reset_tmp_reg_offset();
 
     let mut func = RVPass1Func {
         name: ssa_func.name[1..].to_string(), // Remove the leading '@'
@@ -158,12 +164,14 @@ pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
 }
 
 fn fill_proloque(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc) {
+    reset_tmp_reg_offset();
     let mut prologue = rv_pass1::RVPass1Block {
         block: riscv::Block {
             name: func.prologue.clone(),
             instrs: Vec::new(),
         },
-        next: vec![ssa_func.entry.clone()],
+        next: vec![(ssa_func.entry.clone(), ssa_func.blocks[&ssa_func.entry].params.clone())],
+        params: Vec::new(),
     };
     for (i, arg) in func.args.iter().enumerate() {
         if i < 8 {
@@ -188,17 +196,24 @@ fn fill_proloque(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc) {
 }
 
 fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc) {
+    reset_tmp_reg_offset();
     let mut epilogue = rv_pass1::RVPass1Block {
         block: riscv::Block {
             name: func.epilogue.clone(),
             instrs: Vec::new(),
         },
         next: vec![],
+        params: Vec::new(),
     };
-    epilogue
-        .block
-        .instrs
-        .push(Instr::new(&format!("ret # {}", func.is_return_i32)));
+    if func.is_return_i32 {
+        epilogue
+            .block
+            .instrs
+            .push(Instr::new("Ret a0"));
+    }
+    else {
+        epilogue.block.instrs.push(Instr::new("Ret"));
+    }
     func.blocks.push(epilogue);
 }
 
@@ -206,17 +221,16 @@ struct State {
     pub stack_size: i32,
 }
 
-fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str) -> RVPass1Block {
+fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str)
+-> RVPass1Block {
+    reset_tmp_reg_offset();
     let mut rv_block = RVPass1Block {
         block: riscv::Block {
             name: block.block.name.clone(),
             instrs: Vec::new(),
         },
-        next: block
-            .next
-            .iter()
-            .map(|(next_block, _)| next_block.clone())
-            .collect(),
+        next: block.next.clone(),
+        params: block.params.clone(),
     };
 
     for instr in &block.block.instrs {
@@ -238,6 +252,7 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                     .block
                     .instrs
                     .push(Instr::new(&format!("li {}, {}", TMP_REG, state.stack_size)));
+                reset_tmp_reg_offset();
                 rv_block.block.instrs.push(Instr::new(&format!(
                     "add {}, {}, {}",
                     instr.operands[0],
@@ -259,9 +274,6 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                         .block
                         .instrs
                         .push(Instr::new(&format!("sw {}, {}", arg, offset_reg)));
-                }
-                unsafe {
-                    TMP_REG_OFFSET = None; // Reset the temporary register offset for each instruction
                 }
             }
             rv_block.block.instrs.push(Instr::new(&format!(
@@ -294,15 +306,6 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                 .block
                 .instrs
                 .push(Instr::new(&format!("mv {}, a0", instr.operands[0])));
-        } else if instr.op == "Br" {
-            rv_block.block.instrs.push(Instr::new(&format!(
-                "beqz {}, {}",
-                instr.operands[0], instr.operands[1]
-            )));
-            rv_block
-                .block
-                .instrs
-                .push(Instr::new(&format!("j {}", instr.operands[2])));
         } else if instr.op == "Ret" {
             if instr.operands.len() == 1 {
                 rv_block
@@ -314,8 +317,11 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                 .block
                 .instrs
                 .push(Instr::new(&format!("j {}", epilogue)));
-            rv_block.next = vec![epilogue.to_string()];
-        } else {
+            rv_block.next = vec![
+                (epilogue.to_string(), vec![])
+            ];
+        }
+        else {
             rv_block.block.instrs.push(instr.clone());
         }
     }
@@ -330,8 +336,28 @@ impl RVPass1Func {
         inst_list.push_back(format!(".globl {}", self.name));
         inst_list.push_back(format!("{}:", self.name));
         for block in &self.blocks {
-            inst_list.push_front("".to_string());
-            inst_list.extend(block.block.dump());
+            inst_list.push_back(format!(
+                "{}({}):",
+                block.block.name,
+                block.params.join(", ")
+            ));
+
+            inst_list.extend({
+                let mut insts = block.block.dump();
+                insts.pop_front();
+                insts
+            });
+
+            inst_list.push_back(format!(
+                "# Next: {}",
+                block
+                    .next
+                    .iter()
+                    .map(|(name, ops)| format!("{}({})", name, ops.join(", ")))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ));
+            inst_list.push_back("".to_string());
         }
         inst_list
     }

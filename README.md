@@ -24,7 +24,7 @@ This is a course project at Peking University.
         1. Do active variable scan for each basic block
         2. Do block parameter elimination until it converges
 
-4. Convert SSA form to Basic RV form by substituting virtual instructions with real instructions.
+4. Convert SSA form to Basic RV form by substituting virtual Call instructions with real Call instructions.
    But we still use virtual registers to represent local variables.
 
 5. Do register allocation using graph coloring. Add stack allocation and deallocation instructions.
