@@ -1,3 +1,5 @@
+//! Replication elimination pass.
+
 use std::collections::HashMap;
 
 pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {

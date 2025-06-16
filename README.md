@@ -13,11 +13,24 @@ This is a course project at Peking University.
     - In some sense, global variables are deemed as arguments of the function.
     - Use `la` to load all global addresses at the beginning of the function
 
-2. Generate global SSA form by active varaibles analysis across basic blocks.
+2. Do local optimization on SSA Basic Block
+    1. constant folding
+    2. common subexpression elimination
+    3. replication elimination
+    4. dead code elimination
+
+3. Generate global SSA form by active varaibles analysis across basic blocks.
     - Use a 2-pass approach.
         1. Do active variable scan for each basic block
         2. Do block parameter elimination until it converges
-3. Do constant propagation and folding and dead code elimination using DAG on SSA block
+
+4. Convert SSA form to Basic RV form by substituting virtual instructions with real instructions.
+   But we still use virtual registers to represent local variables.
+
+5. Do register allocation using graph coloring. Add stack allocation and deallocation instructions.
+    - Do register merging and replication elimination in loop
+
+6. Do peephole optimization
 
 ## Material
 [Course Website](https://pku-minic.github.io/online-doc/#/)
