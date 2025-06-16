@@ -172,7 +172,7 @@ fn fill_proloque(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc) {
                 .instrs
                 .push(Instr::new(&format!("mv {}, a{}", arg, i)));
         } else {
-            let offset = 4 + 4 * (i - 8) as i32;
+            let offset = 8 + 4 * (i - 8) as i32;
             let offset_reg = get_sp_offset_reg(offset, &mut prologue);
             prologue
                 .block
@@ -253,7 +253,7 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                         .instrs
                         .push(Instr::new(&format!("mv a{}, {}", i, arg)));
                 } else {
-                    let offset = 4 * (i - 8) as i32;
+                    let offset = 4 + 4 * (i - 8) as i32;
                     let offset_reg = get_sp_offset_reg(offset, &mut rv_block);
                     rv_block
                         .block
@@ -277,7 +277,7 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                         .instrs
                         .push(Instr::new(&format!("mv a{}, {}", i, arg)));
                 } else {
-                    let offset = 4 * (i - 8) as i32;
+                    let offset = 4 + 4 * (i - 8) as i32;
                     let offset_reg = get_sp_offset_reg(offset, &mut rv_block);
                     rv_block
                         .block
