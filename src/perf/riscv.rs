@@ -26,8 +26,6 @@ pub fn is_real_reg(name: &str) -> bool {
         || name == RV_ZERO_REG
 }
 
-pub const TMP_REG: &str = "rv_pass_tmp";
-
 #[derive(Debug, Clone)]
 pub struct Instr {
     pub op: String,

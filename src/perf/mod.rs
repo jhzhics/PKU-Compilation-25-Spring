@@ -37,11 +37,15 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .map(|f| ssa_pass2::pass(f.clone()))
         .collect::<Vec<ssa_pass2::SSAFunc>>();
 
-    let rv_pass1_funcs = ssa_funcs
+    let mut rv_pass1_funcs = ssa_funcs
         .iter()
         .map(|f| rv_pass1::pass(f))
         .collect::<Vec<rv_pass1::RVPass1Func>>();
 
+    rv_pass1_funcs.iter_mut().for_each(|f| {
+        rv_pass2::pass(f);
+    });
+    
     rv_pass1_funcs.iter().for_each(|func| {
         inst_list.extend(func.dump());
         inst_list.push_back("".to_string());

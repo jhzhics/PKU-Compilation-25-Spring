@@ -1,4 +1,5 @@
-//! This module coverts SSA form to a basic RV form (infinite registers, but without any virtual instructions).
+//! This module coverts SSA form to a basic RV form (infinite registers)
+//! The main purpose is convert the virtual "Call" to "call"
 
 use std::cmp::max;
 use std::collections::LinkedList;
@@ -29,59 +30,6 @@ pub struct RVPass1Block {
     pub block: riscv::Block,
     pub next: Vec<(String, Vec<String>)>, // Next blocks, with operands
     pub params: Vec<String>,
-}
-
-
-use riscv::TMP_REG;
-static mut TMP_REG_OFFSET: Option<i32> = None;
-
-fn reset_tmp_reg_offset() {
-    unsafe {
-        TMP_REG_OFFSET = None; // Reset the temporary register offset
-    }
-}
-
-fn get_sp_offset_reg(offset: i32, block: &mut RVPass1Block) -> String {
-    if fit_in_imm12(offset) {
-        format!("{}({})", offset, riscv::RV_SP_REG)
-    } else {
-        unsafe {
-            match TMP_REG_OFFSET {
-                None => {
-                    block
-                        .block
-                        .instrs
-                        .push(Instr::new(&format!("li {}, {}", TMP_REG, offset)));
-                    block.block.instrs.push(Instr::new(&format!(
-                        "add {}, {}, {}",
-                        TMP_REG,
-                        riscv::RV_SP_REG,
-                        TMP_REG
-                    )));
-                    TMP_REG_OFFSET = Some(offset);
-                    TMP_REG.to_string()
-                }
-                Some(tmp_offset) => {
-                    let new_offset = offset - tmp_offset;
-                    if fit_in_imm12(new_offset) {
-                        format!("{}({})", new_offset, TMP_REG)
-                    } else {
-                        block
-                            .block
-                            .instrs
-                            .push(Instr::new(&format!("li {}, {}", TMP_REG, new_offset)));
-                        block.block.instrs.push(Instr::new(&format!(
-                            "add {}, {}, {}",
-                            TMP_REG,
-                            riscv::RV_SP_REG,
-                            TMP_REG
-                        )));
-                        TMP_REG.to_string()
-                    }
-                }
-            }
-        }
-    }
 }
 
 fn get_is_return_i32(ssa_func: &ssa_pass2::SSAFunc) -> bool {
@@ -134,8 +82,6 @@ fn get_func_call_args(ssa_func: &ssa_pass2::SSAFunc) -> Option<usize> {
 }
 
 pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
-    reset_tmp_reg_offset();
-
     let mut func = RVPass1Func {
         name: ssa_func.name[1..].to_string(), // Remove the leading '@'
         blocks: Vec::new(),                   // To be updated with blocks
@@ -146,48 +92,68 @@ pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
         prologue: format!("L_Prologue_{}", &ssa_func.name[1..]),
         epilogue: format!("L_Epilogue_{}", &ssa_func.name[1..]),
     };
-    let mut state = State {
-        stack_size: max(
+    let mut state = State::new();
+    state.stack_size = max(
             0,
             func.func_call_argc.map_or(0,
              |argc| 4 * argc.saturating_sub(8) as i32) + 4,
-        ),
-    };
+        );
     for (_, block) in &ssa_func.blocks {
         let rv_block = transform_block(block, &mut state, &func.epilogue);
         func.blocks.push(rv_block);
     }
     func.stack_size = state.stack_size as usize;
-    fill_proloque(&mut func, ssa_func);
-    fill_epilogue(&mut func, ssa_func);
+    fill_prologue(&mut func, ssa_func, &mut state);
+    fill_epilogue(&mut func, ssa_func, &mut state);
     func
 }
 
-fn fill_proloque(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc) {
-    reset_tmp_reg_offset();
+fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &mut State) {
+    state.reset_tmp_reg();
     let mut prologue = rv_pass1::RVPass1Block {
         block: riscv::Block {
             name: func.prologue.clone(),
             instrs: Vec::new(),
         },
-        next: vec![(ssa_func.entry.clone(), ssa_func.blocks[&ssa_func.entry].params.clone())],
+        next: Vec::new(),
         params: Vec::new(),
     };
+    let goto_args = ssa_func.blocks[&ssa_func.entry].params.iter()
+        .map(|arg| format!("{}_0", arg))
+        .collect::<Vec<String>>();
+    prologue.next.push((
+        ssa_func.entry.clone(),
+        goto_args,
+    ));
+
     for (i, arg) in func.args.iter().enumerate() {
         if i < 8 {
             prologue
                 .block
                 .instrs
-                .push(Instr::new(&format!("mv {}, a{}", arg, i)));
+                .push(Instr::new(&format!("mv {}_0, a{}", arg, i)));
         } else {
             let offset = 8 + 4 * (i - 8) as i32;
-            let offset_reg = get_sp_offset_reg(offset, &mut prologue);
+            let offset_reg = state.get_sp_offset_reg(offset, &mut prologue);
             prologue
                 .block
                 .instrs
-                .push(Instr::new(&format!("sw {}, {}", arg, offset_reg)));
+                .push(Instr::new(&format!("sw {}_0, {}", arg, offset_reg)));
         }
     }
+    let tmp = state.get_write_tmp_reg();
+    prologue.block.instrs.push(Instr::new(&format!(
+        "li {}, {}",
+        tmp,
+        0 // To be filled
+    )));
+    prologue.block.instrs.push(Instr::new(&format!(
+        "sub {}, {}, {}",
+        riscv::RV_SP_REG,
+        riscv::RV_SP_REG,
+        tmp
+    )));
+
     prologue.block.instrs.push(Instr::new(&format!(
         "j {}",
         ssa_func.entry.clone()
@@ -195,8 +161,8 @@ fn fill_proloque(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc) {
     func.blocks.insert(0, prologue);
 }
 
-fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc) {
-    reset_tmp_reg_offset();
+fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc, state: &mut State) {
+    state.reset_tmp_reg();
     let mut epilogue = rv_pass1::RVPass1Block {
         block: riscv::Block {
             name: func.epilogue.clone(),
@@ -205,6 +171,18 @@ fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc) {
         next: vec![],
         params: Vec::new(),
     };
+    let tmp = state.get_write_tmp_reg();
+    epilogue.block.instrs.push(Instr::new(&format!(
+        "li {}, {}",
+        tmp,
+        0 // To be filled with the stack size
+    )));
+    epilogue.block.instrs.push(Instr::new(&format!(
+        "add {}, {}, {}",
+        riscv::RV_SP_REG,
+        riscv::RV_SP_REG,
+        tmp
+    )));
     if func.is_return_i32 {
         epilogue
             .block
@@ -219,11 +197,78 @@ fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc) {
 
 struct State {
     pub stack_size: i32,
+    next_idx: usize,
+    sp_offset: Option<i32>,
+}
+
+impl State {
+    const TMP_REG: &'static str = "rv_pass1_tmp";
+
+    pub fn new() -> Self {
+        State {
+            stack_size: 0,
+            next_idx: 0,
+            sp_offset: None,
+        }
+    }
+    
+    pub fn reset_tmp_reg(&mut self) {
+        self.next_idx += 1;
+        self.sp_offset = None;
+    }
+
+    pub fn get_sp_offset_reg(&mut self, offset: i32, block: &mut RVPass1Block) -> String {
+        if fit_in_imm12(offset) {
+            format!("{}({})", offset, riscv::RV_SP_REG)
+        } else {
+            match self.sp_offset {
+                None => {
+                    block.block.instrs.push(Instr::new(&format!("li {}, {}", self.get_write_tmp_reg(), offset)));
+                    let tmp = self.get_write_tmp_reg();
+                    block.block.instrs.push(Instr::new(&format!(
+                        "add {}, {}, {}",
+                        tmp,
+                        riscv::RV_SP_REG,
+                        tmp
+                    )));
+                    self.sp_offset = Some(offset);
+                    tmp
+                }
+                Some(tmp_offset) => {
+                    let new_offset = offset - tmp_offset;
+                    if fit_in_imm12(new_offset) {
+                        format!("{}({})", new_offset, self.get_read_tmp_reg())
+                    } else {
+                        block.block.instrs.push(Instr::new(&format!("li {}, {}", self.get_write_tmp_reg(), new_offset)));
+                        let tmp = self.get_write_tmp_reg();
+                        block.block.instrs.push(Instr::new(&format!(
+                            "add {}, {}, {}",
+                            tmp,
+                            riscv::RV_SP_REG,
+                            tmp
+                        )));
+                        self.sp_offset = Some(new_offset);
+                        tmp
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn get_write_tmp_reg(&mut self) -> String {
+        self.next_idx += 1;
+        self.sp_offset = None; // Reset the offset for the next use
+        format!("{}_{}", Self::TMP_REG, self.next_idx)
+    }
+
+    fn get_read_tmp_reg(&mut self) -> String {
+        format!("{}_{}", Self::TMP_REG, self.next_idx)
+    }
 }
 
 fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str)
 -> RVPass1Block {
-    reset_tmp_reg_offset();
+    state.reset_tmp_reg();
     let mut rv_block = RVPass1Block {
         block: riscv::Block {
             name: block.block.name.clone(),
@@ -248,16 +293,16 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                 )));
             } else {
                 // If the stack size is too large, we need to use a temporary register
+                let tmp_reg = state.get_write_tmp_reg();
                 rv_block
                     .block
                     .instrs
-                    .push(Instr::new(&format!("li {}, {}", TMP_REG, state.stack_size)));
-                reset_tmp_reg_offset();
+                    .push(Instr::new(&format!("li {}, {}", tmp_reg, state.stack_size)));
                 rv_block.block.instrs.push(Instr::new(&format!(
                     "add {}, {}, {}",
                     instr.operands[0],
                     riscv::RV_SP_REG,
-                    TMP_REG
+                    tmp_reg
                 )));
             }
         } else if instr.op == "Call_1" {
@@ -269,7 +314,7 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                         .push(Instr::new(&format!("mv a{}, {}", i, arg)));
                 } else {
                     let offset = 4 + 4 * (i - 8) as i32;
-                    let offset_reg = get_sp_offset_reg(offset, &mut rv_block);
+                    let offset_reg = state.get_sp_offset_reg(offset, &mut rv_block);
                     rv_block
                         .block
                         .instrs
@@ -290,7 +335,7 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                         .push(Instr::new(&format!("mv a{}, {}", i, arg)));
                 } else {
                     let offset = 4 + 4 * (i - 8) as i32;
-                    let offset_reg = get_sp_offset_reg(offset, &mut rv_block);
+                    let offset_reg = state.get_sp_offset_reg(offset, &mut rv_block);
                     rv_block
                         .block
                         .instrs
