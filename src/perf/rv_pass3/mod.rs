@@ -58,9 +58,11 @@ impl rv_pass1::RVPass1Func {
 
 pub fn pass(func: &mut rv_pass1::RVPass1Func) {
     merge_blocks(func);
+
     func.blocks.iter_mut().for_each(|(_, block)| {
         peephole::pass(block);
     });
+
     dce_opt::pass(func);
 }
 

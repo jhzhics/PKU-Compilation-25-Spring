@@ -620,7 +620,11 @@ impl Instr {
             assert!(self.operands.len() == 3, "addi instruction must have exactly three operands: {}", self);
             vec![self.operands[0].clone()]
         }
-        else
+        else if self.op == "slti"
+        {
+            assert!(self.operands.len() == 3, "stli instruction must have exactly three operands: {}", self);
+            vec![self.operands[0].clone()]
+        } else
         {
             panic!("Unknown instruction: {}", self);
         }
@@ -857,6 +861,10 @@ impl Instr {
         else if self.op == "addi"
         {
             assert!(self.operands.len() == 3, "addi instruction must have exactly three operands: {}", self);
+            vec![self.operands[1].clone()]
+        } else if self.op == "slti"
+        {
+            assert!(self.operands.len() == 3, "stli instruction must have exactly three operands: {}", self);
             vec![self.operands[1].clone()]
         }
         else

@@ -13,16 +13,15 @@ fn is_power_of_two(n: i32) -> bool {
 pub fn pass(block: &mut RVPass1Block) {
     let mut constant_map: HashMap<String, i32> = HashMap::new();
     for inst in &mut block.block.instrs {
+        let mut known = false;
         if inst.op == "li" {
             assert!(
                 inst.operands.len() == 2,
                 "li instruction must have exactly two operands: {}",
                 inst
             );
-            constant_map.insert(
-                inst.operands[0].clone(),
-                inst.operands[1].parse::<i32>().unwrap(),
-            );
+            constant_map.insert(inst.operands[0].clone(),inst.operands[1].parse::<i32>().unwrap());
+			known = true;
         } else if inst.op == "xor" {
             assert!(
                 inst.operands.len() == 3,
@@ -33,6 +32,7 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 ^ val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if fit_in_imm12(*val1) {
                     *inst = Instr::new(&format!("xori {}, {}, {}", inst.operands[0], inst.operands[2], val1));
@@ -51,6 +51,7 @@ pub fn pass(block: &mut RVPass1Block) {
             if let Some(val) = constant_map.get(&inst.operands[1]) {
                 let result = if *val == 0 { 1 } else { 0 };
                 constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                 *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
             }
         } else if inst.op == "add" {
@@ -63,6 +64,7 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 + val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if fit_in_imm12(*val1) {
                     *inst = Instr::new(&format!("addi {}, {}, {}", inst.operands[0], inst.operands[2], val1));
@@ -82,6 +84,7 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 - val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if *val1 == 0 {
                     inst.operands[1] = riscv::RV_ZERO_REG.to_string();
@@ -101,9 +104,11 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 * val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if *val1 == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
+			known = true;
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
                 } else if is_power_of_two(*val1) && fit_in_shamt(*val1) {
                     let shamt = val1.ilog(2);
@@ -112,6 +117,7 @@ pub fn pass(block: &mut RVPass1Block) {
             } else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
+			known = true;
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
                 } else if is_power_of_two(*val) && fit_in_shamt(*val) {
                     let shamt = val.ilog(2);
@@ -129,6 +135,7 @@ pub fn pass(block: &mut RVPass1Block) {
                     assert!(*val2 != 0, "Division by zero in instruction: {}", inst);
                     let result = val1 / val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if *val1 == 0 {
                     *inst = Instr::new(&format!("div {}, {}, {}", inst.operands[0], riscv::RV_ZERO_REG, inst.operands[2]));
@@ -149,6 +156,7 @@ pub fn pass(block: &mut RVPass1Block) {
                     assert!(*val2 != 0, "Division by zero in instruction: {}", inst);
                     let result = val1 % val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if *val1 == 0 {
                     *inst = Instr::new(&format!("rem {}, {}, {}", inst.operands[0], riscv::RV_ZERO_REG, inst.operands[2]));
@@ -156,6 +164,7 @@ pub fn pass(block: &mut RVPass1Block) {
             } else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == 1 {
                     constant_map.insert(inst.operands[0].clone(), 0);
+			known = true;
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
                 }
             }
@@ -169,6 +178,7 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = if val1 < val2 { 1 } else { 0 };
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if *val1 == 0 {
                     *inst = Instr::new(&format!("slt {}, {}, {}", inst.operands[0], riscv::RV_ZERO_REG, inst.operands[2]));
@@ -190,6 +200,7 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Ok(val2) = inst.operands[2].parse::<i32>() {
                     let result = val1 ^ val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 }
                 else {
@@ -205,6 +216,7 @@ pub fn pass(block: &mut RVPass1Block) {
             if let Some(val) = constant_map.get(&inst.operands[1]) {
                 let result = if *val != 0 { 1 } else { 0 };
                 constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                 *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
             }
         } else if inst.op == "and" {
@@ -217,9 +229,11 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 & val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if *val1 == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
+			known = true;
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
                 } else if fit_in_imm12(*val1) {
                     *inst = Instr::new(&format!("andi {}, {}, {}", inst.operands[0], inst.operands[2], val1));
@@ -229,6 +243,7 @@ pub fn pass(block: &mut RVPass1Block) {
             }  else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
+			known = true;
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
                 } else if fit_in_imm12(*val) {
                     *inst = Instr::new(&format!("andi {}, {}, {}", inst.operands[0], inst.operands[1], val));
@@ -246,9 +261,11 @@ pub fn pass(block: &mut RVPass1Block) {
                 if let Some(val2) = constant_map.get(&inst.operands[2]) {
                     let result = val1 | val2;
                     constant_map.insert(inst.operands[0].clone(), result);
+			        known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else  if *val1 == -1 {
                     constant_map.insert(inst.operands[0].clone(), -1);
+			        known = true;
                     *inst = Instr::new(&format!("li {}, -1", inst.operands[0]));
                 } else if *val1 == 0 {
                     *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
@@ -258,6 +275,7 @@ pub fn pass(block: &mut RVPass1Block) {
             }  else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == -1 {
                     constant_map.insert(inst.operands[0].clone(), -1);
+			        known = true;
                     *inst = Instr::new(&format!("li {}, -1", inst.operands[0]));
                 }  else if *val == 0 {
                     *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
@@ -279,6 +297,7 @@ pub fn pass(block: &mut RVPass1Block) {
             );
             if let Some(&val) = constant_map.get(&inst.operands[1]) {
                 constant_map.insert(inst.operands[0].clone(), val);
+			known = true;
                 *inst = Instr::new(&format!("li {}, {}", inst.operands[0], val));
             }
         } else if inst.op == "la" {
@@ -316,6 +335,11 @@ pub fn pass(block: &mut RVPass1Block) {
             assert!(inst.operands.is_empty(), "ret instruction must have no operands: {}", inst);
         } else {
             panic!("Unknown instruction: {}", inst);
+        }
+        if !known {
+            for kill in &inst.operands {
+                constant_map.remove(kill);
+            }
         }
     }
 

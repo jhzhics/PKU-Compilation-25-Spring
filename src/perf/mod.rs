@@ -24,39 +24,43 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .iter()
         .map(|(f, _)| ssa_pass1::pass(&prog, f.clone()))
         .collect::<Vec<ssa_pass1::SSAPass1Func>>();
-
+    
+    
     let mut ssa_pass1funcs = pass1funcs
-        .iter()
-        .cloned()
-        .filter(|f| f.entry.is_some())
-        .collect::<Vec<ssa_pass1::SSAPass1Func>>();
+    .iter()
+    .cloned()
+    .filter(|f| f.entry.is_some())
+    .collect::<Vec<ssa_pass1::SSAPass1Func>>();
+
 
     ssa_pass1funcs.iter_mut().for_each(|f| dbe_pass::pass(f));
 
     let ssa_funcs = ssa_pass1funcs
-        .iter()
-        .cloned()
-        .map(|f| ssa_pass2::pass(f.clone()))
-        .collect::<Vec<ssa_pass2::SSAFunc>>();
+    .iter()
+    .cloned()
+    .map(|f| ssa_pass2::pass(f.clone()))
+    .collect::<Vec<ssa_pass2::SSAFunc>>();
+
 
     let mut rv_pass1_funcs = ssa_funcs
-        .iter()
-        .map(|f| rv_pass1::pass(f))
-        .collect::<Vec<rv_pass1::RVPass1Func>>();
+    .iter()
+    .map(|f| rv_pass1::pass(f))
+    .collect::<Vec<rv_pass1::RVPass1Func>>();
+
 
     rv_pass1_funcs.iter_mut().for_each(|f| {
         rv_pass2::pass(f);
         rv_pass3::pass(f);
     });
-    
+
     rv_pass1_funcs.iter().for_each(|func| {
         inst_list.extend(func.release_dump());
         inst_list.push_back("".to_string());
     });
 
     inst_list
-        .iter()
-        .map(|s| s.as_str())
-        .collect::<Vec<&str>>()
-        .join("\n")
+    .iter()
+    .map(|s| s.as_str())
+    .collect::<Vec<&str>>()
+            .join("\n")
 }

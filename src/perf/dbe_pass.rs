@@ -392,12 +392,10 @@ fn eliminate_dead_branches(block: &mut ssa_pass1::SSAPass1Block) -> bool {
     let cond = last_inst.operands[0].clone();
 
     if let Some(val) = constant_map.get(&cond) {
-        let target = if *val == 1 {
+        let target = if *val != 0 {
             last_inst.operands[1].clone()
-        } else if *val == 0 {
-            last_inst.operands[2].clone()
         } else {
-            panic!("Unexpected value for condition {}: {}", cond, val);
+            last_inst.operands[2].clone()
         };
         *last_inst = Instr::new(&format!("j {}", target));
         block.next = vec![target];

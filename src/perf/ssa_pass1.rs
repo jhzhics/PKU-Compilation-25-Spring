@@ -5,7 +5,6 @@ use koopa::ir::{BinaryOp, FunctionData, TypeKind, Value, ValueKind};
 use std::collections::{HashMap, HashSet, LinkedList};
 
 use crate::perf::riscv::Instr;
-
 use super::riscv;
 
 #[derive(Debug, Clone)]
@@ -35,10 +34,7 @@ impl SSAPass1Func {
                 inst_list.extend(block.block.dump());
                 inst_list.push_back("".to_string());
             });
-        } else {
-            panic!("Entry should be set for a function");
         }
-
         inst_list
     }
 }
