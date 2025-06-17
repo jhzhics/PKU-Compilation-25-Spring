@@ -17,7 +17,7 @@ use std::collections::LinkedList;
 pub fn compile(prog: koopa::ir::Program) -> String {
     koopa::ir::Type::set_ptr_size(4);
 
-    let mut inst_list: LinkedList<String> = misc::generate_dataseg(&prog);
+    let mut inst_list: LinkedList<String> = misc::generate_dataseg(&prog, "global_");
 
     let pass1funcs = prog
         .funcs()
@@ -25,22 +25,19 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .map(|(f, _)| ssa_pass1::pass(&prog, f.clone()))
         .collect::<Vec<ssa_pass1::SSAPass1Func>>();
     
-    
     let mut ssa_pass1funcs = pass1funcs
     .iter()
     .cloned()
     .filter(|f| f.entry.is_some())
     .collect::<Vec<ssa_pass1::SSAPass1Func>>();
 
-
     ssa_pass1funcs.iter_mut().for_each(|f| dbe_pass::pass(f));
-
+    
     let ssa_funcs = ssa_pass1funcs
     .iter()
     .cloned()
     .map(|f| ssa_pass2::pass(f.clone()))
     .collect::<Vec<ssa_pass2::SSAFunc>>();
-
 
     let mut rv_pass1_funcs = ssa_funcs
     .iter()

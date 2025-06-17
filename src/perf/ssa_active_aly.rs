@@ -43,8 +43,8 @@ pub fn req_active_analyze(
     let actives = actives.unwrap_or(&mut binding);
     let mut now = out.clone();
     actives.clear();
-    actives.push_back(now.clone());
     for i in (0..block.instrs.len()).rev() {
+        actives.push_front(now.clone());
         let instr = &block.instrs[i];
         let kill_vars = instr.kill_vars();
         let gen_vars = instr.gen_vars();
@@ -58,8 +58,6 @@ pub fn req_active_analyze(
                 now.insert(var);
             }
         }
-
-        actives.push_front(now.clone());
     }
     now
 }

@@ -13,7 +13,7 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
     req_active_analyze(&block.block, &out, Some(&mut actives));
     let mut to_remove: Vec<usize> = Vec::new();
 
-    let mut active_iter = actives.iter().skip(1);
+    let mut active_iter = actives.iter();
 
     for (i, instr) in block.block.instrs.iter().enumerate() {
         if !instr.is_side_effecting() {

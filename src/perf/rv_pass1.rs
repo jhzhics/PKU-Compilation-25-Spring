@@ -3,6 +3,7 @@
 
 use std::cmp::max;
 use std::collections::{HashMap, HashSet, LinkedList};
+use std::os::linux::raw::stat;
 
 use crate::perf::riscv::fit_in_imm12;
 use crate::perf::rv_pass1;
@@ -138,7 +139,7 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
                 .instrs
                 .push(Instr::new(&format!("mv {}, a{}", arg, i)));
         } else {
-            let offset = 8 + 4 * (i - 8) as i32;
+            let offset = 4 * (i - 8) as i32;
             let offset_reg = state.get_sp_offset_reg(offset, &mut prologue);
             prologue
                 .block
@@ -305,17 +306,19 @@ fn transform_block(func: &ssa_pass2::SSAFunc, block: &ssa_form::SSABlock, state:
             let alloc_size = instr.operands[1]
                 .parse::<usize>()
                 .expect("Alloc instruction should have a valid size");
+            let old_stack_size = state.stack_size;
             state.stack_size += alloc_size as i32;
             assert!(
                 alloc_size > 4,
                 "Size == 4 should be in virtual register, not in stack"
             );
-            if riscv::fit_in_imm12(state.stack_size) {
+    
+            if riscv::fit_in_imm12(old_stack_size) {
                 rv_block.block.instrs.push(Instr::new(&format!(
                     "addi {}, {}, {}",
                     instr.operands[0],
                     riscv::RV_SP_REG,
-                    state.stack_size
+                    old_stack_size
                 )));
             } else {
                 // If the stack size is too large, we need to use a temporary register
@@ -323,7 +326,7 @@ fn transform_block(func: &ssa_pass2::SSAFunc, block: &ssa_form::SSABlock, state:
                 rv_block
                     .block
                     .instrs
-                    .push(Instr::new(&format!("li {}, {}", tmp_reg, state.stack_size)));
+                    .push(Instr::new(&format!("li {}, {}", tmp_reg, old_stack_size)));
                 rv_block.block.instrs.push(Instr::new(&format!(
                     "add {}, {}, {}",
                     instr.operands[0],
@@ -339,7 +342,7 @@ fn transform_block(func: &ssa_pass2::SSAFunc, block: &ssa_form::SSABlock, state:
                         .instrs
                         .push(Instr::new(&format!("mv a{}, {}", i, arg)));
                 } else {
-                    let offset = 4 + 4 * (i - 8) as i32;
+                    let offset = 4 * (i - 8) as i32;
                     let offset_reg = state.get_sp_offset_reg(offset, &mut rv_block);
                     rv_block
                         .block
@@ -360,7 +363,7 @@ fn transform_block(func: &ssa_pass2::SSAFunc, block: &ssa_form::SSABlock, state:
                         .instrs
                         .push(Instr::new(&format!("mv a{}, {}", i, arg)));
                 } else {
-                    let offset = 4 + 4 * (i - 8) as i32;
+                    let offset = 4 * (i - 8) as i32;
                     let offset_reg = state.get_sp_offset_reg(offset, &mut rv_block);
                     rv_block
                         .block

@@ -283,7 +283,7 @@ fn phase2_eliminate_params(func: &mut SSAFunc) {
             continue; // No previous blocks, nothing to eliminate
         }
         let params = block.params.iter().cloned();
-        let mut erased: Vec<(usize, String, String)> = Vec::new();
+        let mut erased: Vec<(usize, String, String)> = Vec::new(); // (index, old_var, new_var)
         for (i, param) in params.enumerate() {
             let mut record: Option<String> = None;
             let mut is_prev_coherent = true;
@@ -340,7 +340,9 @@ fn phase2_eliminate_params(func: &mut SSAFunc) {
             .params
             .retain(|var| erased.iter().all(|(_, old_var, _)| old_var != var));
         for (_i, old_var, new_var) in erased.clone() {
-            block_substitute_var(block, &old_var, &new_var);
+            func.blocks.iter_mut().for_each(|(_block_name, block)| {
+                block_substitute_var(block, &old_var, &new_var);
+            });
         }
     }
 }

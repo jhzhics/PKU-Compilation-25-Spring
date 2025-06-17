@@ -12,6 +12,7 @@ fn is_power_of_two(n: i32) -> bool {
 
 pub fn pass(block: &mut RVPass1Block) {
     let mut constant_map: HashMap<String, i32> = HashMap::new();
+    constant_map.insert(riscv::RV_ZERO_REG.to_string(), 0);
     for inst in &mut block.block.instrs {
         let mut known = false;
         if inst.op == "li" {
@@ -135,7 +136,7 @@ pub fn pass(block: &mut RVPass1Block) {
                     assert!(*val2 != 0, "Division by zero in instruction: {}", inst);
                     let result = val1 / val2;
                     constant_map.insert(inst.operands[0].clone(), result);
-			known = true;
+			        known = true;
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
                 } else if *val1 == 0 {
                     *inst = Instr::new(&format!("div {}, {}, {}", inst.operands[0], riscv::RV_ZERO_REG, inst.operands[2]));
@@ -300,6 +301,23 @@ pub fn pass(block: &mut RVPass1Block) {
 			known = true;
                 *inst = Instr::new(&format!("li {}, {}", inst.operands[0], val));
             }
+        } else if inst.op == "addi" {
+            assert!(
+                inst.operands.len() == 3,
+                "addi instruction must have exactly three operands: {}",
+                inst
+            );
+            if let Some(val1) = constant_map.get(&inst.operands[1]) {
+                if let Ok(val2) = inst.operands[2].parse::<i32>() {
+                    let result = val1 + val2;
+                    constant_map.insert(inst.operands[0].clone(), result);
+                    known = true;
+                    *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
+                }
+                else {
+                    panic!("Invalid immediate value in addi instruction: {}", inst);
+                }
+            }
         } else if inst.op == "la" {
             assert!(
                 inst.operands.len() == 2,
@@ -333,11 +351,12 @@ pub fn pass(block: &mut RVPass1Block) {
             );
         } else if inst.op == "ret" {
             assert!(inst.operands.is_empty(), "ret instruction must have no operands: {}", inst);
-        } else {
+        } else 
+        {
             panic!("Unknown instruction: {}", inst);
         }
         if !known {
-            for kill in &inst.operands {
+            for kill in &inst.kill_vars() {
                 constant_map.remove(kill);
             }
         }
@@ -353,6 +372,9 @@ pub fn pass(block: &mut RVPass1Block) {
             let last_imm = last_inst.operands[2].parse::<i32>().unwrap();
             let last_dst_reg = &last_inst.operands[0];
             let last_src_reg = &last_inst.operands[1];
+            if last_dst_reg == last_src_reg {
+                continue;
+            }
             if inst.op == "sw"
             {
                 assert!(

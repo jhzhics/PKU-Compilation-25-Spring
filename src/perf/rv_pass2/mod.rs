@@ -38,22 +38,20 @@ fn get_used_callee_saved_regs(func: &RVPass1Func) -> Vec<String>
     writen.retain(|reg| {
         assert!(is_real_reg(reg.as_str()));
         riscv::RV_CALLEE_SAVE_REGS.contains(&reg.as_str())
+        || reg.as_str() == riscv::RA_REG
     });
     writen.into_iter().collect()
 }
 
 fn complete_prologue_epilogue(func: &mut RVPass1Func)
 {
-    let mut used_callee_saved_regs = get_used_callee_saved_regs(func);
-    if func.func_call_argc.is_some() {
-        used_callee_saved_regs.insert(0, riscv::RA_REG.to_string());
-    }
+    let used_callee_saved_regs = get_used_callee_saved_regs(func);
     func.stack_size += 4 * used_callee_saved_regs.len();
     let prologue = func.blocks.get_mut(&func.prologue).expect("Prologue block not found");
     prologue.block.instrs = used_callee_saved_regs.iter().enumerate()
             .map(|(i, reg)| {
                 Instr::new(&format!("sw {}, {}({})", 
-                    reg, 4 * i, riscv::RV_SP_REG))
+                    reg,  - 4 * (i as i32 + 1), riscv::RV_SP_REG))
             }).chain(
                 prologue.block.instrs.iter().cloned()
             ).collect();
@@ -69,7 +67,7 @@ fn complete_prologue_epilogue(func: &mut RVPass1Func)
         .chain(used_callee_saved_regs.iter().rev().enumerate()
             .map(|(i, reg)| {
                 Instr::new(&format!("lw {}, {}({})", 
-                    reg, 4 * (used_callee_saved_regs.len() - 1 - i), riscv::RV_SP_REG))
+                    reg, - 4 * (used_callee_saved_regs.len() as i32 - i as i32), riscv::RV_SP_REG))
             })).chain(
                 std::iter::once(Instr::new(&format!("ret # {}", func.is_return_i32 as i32 ))))
         .collect();
@@ -87,8 +85,8 @@ fn complete_prologue_epilogue(func: &mut RVPass1Func)
 fn exec_spill_var(func: &mut RVPass1Func, spill_var: String)
 {
     assert!(!is_real_reg(&spill_var));
-    func.stack_size = func.stack_size + 4;
     let offset = func.stack_size as i32;
+    func.stack_size = func.stack_size + 4;
     let load_insts = {
         let mut load_insts = LinkedList::new();
         if fit_in_imm12(offset) 
@@ -120,60 +118,36 @@ fn exec_spill_var(func: &mut RVPass1Func, spill_var: String)
         }
         else
         {
+            let tmp_addr_var = format!("{}_s", spill_var);
             store_insts.push_back(
-                Instr::new(&format!("li {}, {}", spill_var, offset)));
+                Instr::new(&format!("li {}, {}", tmp_addr_var, offset)));
             store_insts.push_back(
                 Instr::new(&format!("add {}, {}, {}", 
-                    spill_var, spill_var, riscv::RV_SP_REG)));
+                    tmp_addr_var, tmp_addr_var, riscv::RV_SP_REG)));
             store_insts.push_back(
                 Instr::new(&format!("sw {}, 0({})", 
-                    spill_var, spill_var))); 
+                    spill_var, tmp_addr_var))); 
         }
         store_insts
     };
 
     func.blocks.iter_mut()
         .for_each(|(_, block)| {
-
-            let splits = block.block.instrs.split_inclusive(
-                |instr| instr.gen_vars().contains(&spill_var));
-            let new_instrs: Vec<Instr> = splits
-                .flat_map(|split| {
-                    if let Some(instr) = split.last() {
-                        if !instr.gen_vars().contains(&spill_var) {
-                            return split.iter().cloned().collect::<Vec<_>>();
+                let old_block_instrs = block.block.instrs.clone();
+                block.block.instrs.clear();
+                old_block_instrs.into_iter().for_each(|instr|
+                    {
+                        if instr.gen_vars().contains(&spill_var)
+                        {
+                            block.block.instrs.extend(load_insts.iter().cloned());
+                        }
+                        block.block.instrs.push(instr.clone());
+                        if instr.kill_vars().contains(&spill_var)
+                        {
+                            block.block.instrs.extend(store_insts.iter().cloned());
                         }
                     }
-                    else {
-                        return split.iter().cloned().collect();
-                    }
-
-
-                    let mut new_instrs = Vec::new();
-                    new_instrs.extend(split[..split.len()-1].iter().cloned());
-                    new_instrs.extend(load_insts.clone());
-                    new_instrs.push(split.last().unwrap().clone());
-                    new_instrs.into_iter().collect()
-                }).collect();
-            let splits = new_instrs.split_inclusive(
-                |instr| instr.kill_vars().contains(&spill_var));
-            let new_instrs: Vec<_> = splits
-                .flat_map(|split| {
-                    if let Some(instr) = split.last() {
-                        if !instr.kill_vars().contains(&spill_var) {
-                            return split.iter().cloned().collect::<Vec<_>>();
-                        }
-                    }
-                    else {
-                        return split.iter().cloned().collect();
-                    }
-
-                    let mut new_instrs = Vec::new();
-                    new_instrs.extend(split.iter().cloned());
-                    new_instrs.extend(store_insts.clone());
-                    new_instrs.into_iter().collect()
-                }).collect();
-            block.block.instrs = new_instrs;
+                );
             }       
         );
 }

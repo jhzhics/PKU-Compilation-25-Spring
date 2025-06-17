@@ -42,8 +42,9 @@ impl PartialEq for Instr {
             if other.op != "add" {
                 return false;
             }
+            
             self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
-                || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
+            || self.operands[1] == other.operands[2] && self.operands[2] == other.operands[1]
         } else if self.op == "sub" {
             assert!(
                 self.operands.len() == 3,
@@ -164,6 +165,9 @@ impl PartialEq for Instr {
                 "mv instruction must have exactly two operands: {}",
                 self
             );
+            if other.op != "mv" {
+                return false;
+            }
             self.operands[1] == other.operands[1]
         } else if self.op == "la" {
             assert!(
@@ -171,6 +175,9 @@ impl PartialEq for Instr {
                 "la instruction must have exactly two operands: {}",
                 self
             );
+            if other.op != "la" {
+                return false;
+            }
             self.operands[1] == other.operands[1]
         } else if self.op == "lw" {
             assert!(
@@ -221,6 +228,16 @@ impl PartialEq for Instr {
                 self
             );
             false
+        } else if self.op == "addi" {
+            assert!(
+                self.operands.len() == 3,
+                "addi instruction must have exactly three operands: {}",
+                self
+            );
+            if other.op != "addi" {
+                return false;
+            }
+            self.operands[1] == other.operands[1] && self.operands[2] == other.operands[2]
         } else {
             panic!("Unknown instruction: {}", self);
         }
@@ -230,7 +247,7 @@ impl PartialEq for Instr {
 fn is_expr_instr(instr: &Instr) -> bool {
     match instr.op.as_str() {
         "li" | "xor" | "seqz" | "add" | "sub" | "mul" | "div" | "rem" | "slt" | "sgt" | "xori"
-        | "snez" | "and" | "or" | "mv" | "la" => true,
+        | "snez" | "and" | "or" | "mv" | "la" | "addi" => true,
         _ => false,
     }
 }
@@ -241,7 +258,7 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
     block.block.instrs.iter_mut().for_each(|instr| {
         if is_expr_instr(instr) {
             // Check if the instruction is already in the list of expressions
-            if let Some(pos) = exprs.iter().position(|e| e == instr) {
+            if let Some(pos) = exprs.iter().position(|e| e.eq(instr)) {
                 let old_rd = exprs[pos].operands[0].clone();
                 let new_rd = instr.operands[0].clone();
                 *instr = Instr::new(&format!("mv {}, {}", new_rd, old_rd));

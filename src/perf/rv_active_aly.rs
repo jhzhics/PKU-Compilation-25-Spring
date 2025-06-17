@@ -2,6 +2,8 @@
 
 use std::collections::HashSet;
 use std::collections::LinkedList;
+use std::iter;
+use std::option::Iter;
 
 use crate::perf::riscv;
 use super::rv_pass1::RVPass1Block;
@@ -235,6 +237,11 @@ impl Instr {
             assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
             self.operands[0] = f(self.operands[0].clone());
         }
+        else if self.op == "addi"
+        {
+            assert!(self.operands.len() == 3, "addi instruction must have exactly three operands: {}", self);
+            self.operands[1] = f(self.operands[1].clone());
+        }
         else
         {
             panic!("Unknown instruction: {}", self);
@@ -412,7 +419,12 @@ impl Instr {
         } else if self.op == "bnez"
         {
             assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
-        } else
+        } else if self.op == "addi"
+        {
+            assert!(self.operands.len() == 3, "addi instruction must have exactly three operands: {}", self);
+            self.operands[0] = f(self.operands[0].clone());
+        }
+        else
         {
             panic!("Unknown instruction: {}", self);
         }
@@ -592,9 +604,9 @@ impl Instr {
         {
             assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
             riscv::RV_CALLER_SAVE_REGS
-                .iter()
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>()
+                .iter().cloned().chain(
+                    iter::once(riscv::RA_REG)
+                ).map(|s| s.to_string()).collect()
         } else if self.op == "bnez"
         {
             assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
@@ -826,13 +838,15 @@ impl Instr {
         {
             assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
             let argc = self.comment.trim().parse::<usize>().expect("Invalid argument count in call instruction comment");
-            assert!(argc <= 8, "Argument count must be <= 8 for call instruction: {}", argc);
+            let argc = argc.min(8); // a0-a7
             [
                 "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"
             ].iter()
-                .take(argc)
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>()
+            .take(argc)
+            .map(|s| s.to_string())
+            .chain(
+                iter::once(riscv::RV_SP_REG.to_string())
+            ).collect()
         } else if self.op == "bnez"
         {
             assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
@@ -842,9 +856,21 @@ impl Instr {
             assert!(self.operands.len() == 0, "ret instruction must have no operands: {}", self);
             let is_return_i32 = self.comment.trim().parse::<i32>().unwrap() != 0;
             if is_return_i32 {
-                vec!["a0".to_string()]
+                riscv::RV_CALLEE_SAVE_REGS.iter().cloned()
+                .chain(
+                    iter::once(riscv::RA_REG)
+                ).chain(
+                    iter::once(riscv::RV_SP_REG)
+                ).chain(
+                    iter::once("a0")
+                ).map(|s| s.to_string()).collect()
             } else {
-                vec![]
+                riscv::RV_CALLEE_SAVE_REGS.iter().cloned()
+                .chain(
+                    iter::once(riscv::RA_REG)
+                ).chain(
+                    iter::once(riscv::RV_SP_REG)
+                ).map(|s| s.to_string()).collect()
             }
         } else if self.op == "andi" {
             assert!(self.operands.len() == 3, "andi instruction must have exactly three operands: {}", self);

@@ -19,6 +19,7 @@ pub fn pass(func: &mut ssa_pass2::SSAFunc) {
     let mut modified = true;
     while modified {
         modified = false;
+
         for (_, block) in func.blocks.iter_mut() {
             if constant_opt::pass(block) {
                 modified = true;

@@ -64,6 +64,16 @@ pub fn pass(func: &mut rv_pass1::RVPass1Func) {
     });
 
     dce_opt::pass(func);
+
+    func.blocks.iter_mut().for_each(|(_, block)| {
+        block.block.instrs.iter_mut().for_each(|inst| {
+            if inst.op == "la"
+            {
+                assert!(inst.operands.len() == 2);
+                inst.operands[1] = format!("global_{}", &inst.operands[1][1..]);
+            }
+        });
+    });
 }
 
 fn merge_blocks(func: &mut rv_pass1::RVPass1Func) {
