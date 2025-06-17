@@ -34,6 +34,9 @@ This is a course project at Peking University.
 
 7. Generate final RV code. (Remove all consecutive `j` instruction with block next to it)
 
+# Performance Evaluation
+In PKU 2025 performance evaluation, we get 180.42s.
+
 ## Material
 [Course Website](https://pku-minic.github.io/online-doc/#/)
 
