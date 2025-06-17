@@ -39,6 +39,10 @@ pub fn fit_in_imm12(value: i32) -> bool {
     value >= -2048 && value <= 2047
 }
 
+pub fn fit_in_shamt(value: i32) -> bool {
+    value >= 0 && value <= 31
+}
+
 impl Instr {
     pub fn new(s: &str) -> Self {
         let (s, comment) = if let Some(idx) = s.find('#') {
@@ -86,8 +90,10 @@ impl Instr {
     pub fn is_side_effecting(&self) -> bool {
         match self.op.as_str() {
             "li" | "xor" | "seqz" | "add" | "sub" | "mul" | "div" | "rem" | "slt" | "sgt"
-            | "xori" | "snez" | "and" | "or" | "mv" | "la" | "lw" | "Alloc" => false,
-            "sw" | "j" | "Ret" | "Br" | "Call_1" | "Call_2" => true,
+            | "xori" | "snez" | "and" | "or" | "mv" | "la" | "lw" | "Alloc" | "andi" | "slli"
+            | "ori" | "slti" | "addi" => false,
+            "sw" | "j" | "Ret" | "Br" | "Call_1" | "Call_2" | "ret" | "bnez" | "call"
+            => true,
             _ => panic!("Unknown instruction in is_side_effecting: {}", self.op),
         }
     }
@@ -123,7 +129,13 @@ impl Block {
         let mut inst_list = LinkedList::new();
         inst_list.push_back(format!("{}:", self.name));
         for instr in &self.instrs {
-            inst_list.push_back(format!("  {} {}", instr.op, instr.operands.join(", ")));
+            inst_list.push_back(format!("  {} {}{}", instr.op, instr.operands.join(", "),
+            if instr.comment.is_empty() {
+                String::new()
+            } else {
+                format!(" # {}", instr.comment)
+            }
+        ));
         }
         inst_list
     }

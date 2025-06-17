@@ -28,9 +28,11 @@ This is a course project at Peking University.
    But we still use virtual registers to represent local variables.
 
 5. Do register allocation using graph coloring. Add stack allocation and deallocation instructions.
-    - Do register merging and replication elimination in loop
+    - Provide hints for register merging
 
-6. Do peephole optimization
+6. Add prologue and epilogue and do a final peephole optimization and dead code elimination.
+
+7. Generate final RV code. (Remove all consecutive `j` instruction with block next to it)
 
 ## Material
 [Course Website](https://pku-minic.github.io/online-doc/#/)

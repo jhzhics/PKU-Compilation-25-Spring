@@ -8,17 +8,174 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::LinkedList;
 
+use crate::perf::riscv::fit_in_imm12;
+use crate::perf::riscv::is_real_reg;
+use crate::perf::riscv::Instr;
 use crate::perf::rv_pass1;
 
 use super::riscv;
 use super::rv_pass1::*;
-use super::rv_active_aly::active_analyze;
+use super::rv_active_aly::rv_active_analyze;
 
 pub fn pass(func: &mut RVPass1Func)
 {
     while let Err(spill_var) = try_shade(func) {
-        todo!("Spill variable: {}", spill_var);
+        exec_spill_var(func, spill_var);
     }
+    complete_prologue_epilogue(func);
+}
+
+fn get_used_callee_saved_regs(func: &RVPass1Func) -> Vec<String>
+{
+    let mut writen = HashSet::new();
+    func.blocks.iter()
+        .for_each(|(_, block)| {
+            block.block.instrs.iter()
+                .for_each(|instr| {
+                    writen.extend(instr.kill_vars());
+                });
+        });
+    writen.retain(|reg| {
+        assert!(is_real_reg(reg.as_str()));
+        riscv::RV_CALLEE_SAVE_REGS.contains(&reg.as_str())
+    });
+    writen.into_iter().collect()
+}
+
+fn complete_prologue_epilogue(func: &mut RVPass1Func)
+{
+    let mut used_callee_saved_regs = get_used_callee_saved_regs(func);
+    if func.func_call_argc.is_some() {
+        used_callee_saved_regs.insert(0, riscv::RA_REG.to_string());
+    }
+    func.stack_size += 4 * used_callee_saved_regs.len();
+    let prologue = func.blocks.get_mut(&func.prologue).expect("Prologue block not found");
+    prologue.block.instrs = used_callee_saved_regs.iter().enumerate()
+            .map(|(i, reg)| {
+                Instr::new(&format!("sw {}, {}({})", 
+                    reg, 4 * i, riscv::RV_SP_REG))
+            }).chain(
+                prologue.block.instrs.iter().cloned()
+            ).collect();
+    prologue.block.instrs.iter_mut()
+        .filter(|instr| instr.op == "li").for_each(|instr| {
+            if instr.operands[1] == "$NEG_STACK_SIZE"
+            {
+                instr.operands[1] = (-(func.stack_size as i32)).to_string();
+            }
+        });
+    let epilogue = func.blocks.get_mut(&func.epilogue).expect("Epilogue block not found");
+    epilogue.block.instrs = epilogue.block.instrs[..epilogue.block.instrs.len()-1].iter().cloned()
+        .chain(used_callee_saved_regs.iter().rev().enumerate()
+            .map(|(i, reg)| {
+                Instr::new(&format!("lw {}, {}({})", 
+                    reg, 4 * (used_callee_saved_regs.len() - 1 - i), riscv::RV_SP_REG))
+            })).chain(
+                std::iter::once(Instr::new(&format!("ret # {}", func.is_return_i32 as i32 ))))
+        .collect();
+    epilogue.block.instrs.iter_mut()
+        .filter(|instr| instr.op == "li").for_each(|instr| {
+            if instr.operands[1] == "$STACK_SIZE"
+            {
+                instr.operands[1] = func.stack_size.to_string();
+            }
+        }
+    );
+}
+
+
+fn exec_spill_var(func: &mut RVPass1Func, spill_var: String)
+{
+    assert!(!is_real_reg(&spill_var));
+    func.stack_size = func.stack_size + 4;
+    let offset = func.stack_size as i32;
+    let load_insts = {
+        let mut load_insts = LinkedList::new();
+        if fit_in_imm12(offset) 
+        {
+            load_insts.push_back(
+                Instr::new(&format!("lw {}, {}({})", 
+                    spill_var, offset, riscv::RV_SP_REG)));
+        }
+        else
+        {
+            load_insts.push_back(
+                Instr::new(&format!("li {}, {}", spill_var, offset)));
+            load_insts.push_back(
+                Instr::new(&format!("add {}, {}, {}", 
+                    spill_var, spill_var, riscv::RV_SP_REG)));
+            load_insts.push_back(
+                Instr::new(&format!("lw {}, 0({})", 
+                    spill_var, spill_var))); 
+        }
+        load_insts
+    };
+    let store_insts = {
+        let mut store_insts = LinkedList::new();
+        if fit_in_imm12(offset) 
+        {
+            store_insts.push_back(
+                Instr::new(&format!("sw {}, {}({})", 
+                    spill_var, offset, riscv::RV_SP_REG)));
+        }
+        else
+        {
+            store_insts.push_back(
+                Instr::new(&format!("li {}, {}", spill_var, offset)));
+            store_insts.push_back(
+                Instr::new(&format!("add {}, {}, {}", 
+                    spill_var, spill_var, riscv::RV_SP_REG)));
+            store_insts.push_back(
+                Instr::new(&format!("sw {}, 0({})", 
+                    spill_var, spill_var))); 
+        }
+        store_insts
+    };
+
+    func.blocks.iter_mut()
+        .for_each(|(_, block)| {
+
+            let splits = block.block.instrs.split_inclusive(
+                |instr| instr.gen_vars().contains(&spill_var));
+            let new_instrs: Vec<Instr> = splits
+                .flat_map(|split| {
+                    if let Some(instr) = split.last() {
+                        if !instr.gen_vars().contains(&spill_var) {
+                            return split.iter().cloned().collect::<Vec<_>>();
+                        }
+                    }
+                    else {
+                        return split.iter().cloned().collect();
+                    }
+
+
+                    let mut new_instrs = Vec::new();
+                    new_instrs.extend(split[..split.len()-1].iter().cloned());
+                    new_instrs.extend(load_insts.clone());
+                    new_instrs.push(split.last().unwrap().clone());
+                    new_instrs.into_iter().collect()
+                }).collect();
+            let splits = new_instrs.split_inclusive(
+                |instr| instr.kill_vars().contains(&spill_var));
+            let new_instrs: Vec<_> = splits
+                .flat_map(|split| {
+                    if let Some(instr) = split.last() {
+                        if !instr.kill_vars().contains(&spill_var) {
+                            return split.iter().cloned().collect::<Vec<_>>();
+                        }
+                    }
+                    else {
+                        return split.iter().cloned().collect();
+                    }
+
+                    let mut new_instrs = Vec::new();
+                    new_instrs.extend(split.iter().cloned());
+                    new_instrs.extend(store_insts.clone());
+                    new_instrs.into_iter().collect()
+                }).collect();
+            block.block.instrs = new_instrs;
+            }       
+        );
 }
 
 /// # Returns
@@ -39,13 +196,13 @@ fn try_shade(func: &mut RVPass1Func) -> Result<(), String> {
             .expect("Block not found in RVPass1Func");
         let out = block.next
             .iter()
-            .flat_map(|(next_name, _)| {
+            .flat_map(|next_name| {
                 active_buffer.get(next_name)
                     .expect("Next block not found in active buffer")
                     .iter()
                     .cloned()
             }).collect::<HashSet<String>>();
-        let in_set = active_analyze(&func, &block, out, None);
+        let in_set = rv_active_analyze(&func, &block, out, None);
         let old_in_set = active_buffer.get_mut(&block_name)
             .expect("Block not found in active buffer");
         if old_in_set == &in_set {
@@ -63,14 +220,14 @@ fn try_shade(func: &mut RVPass1Func) -> Result<(), String> {
     for (_, block) in &func.blocks {
         let out = block.next
             .iter()
-            .flat_map(|(next_name, _)| {
+            .flat_map(|next_name| {
                 active_buffer.get(next_name)
                     .expect("Next block not found in active buffer")
                     .iter()
                     .cloned()
             }).collect::<HashSet<String>>();
         let mut conflicts: LinkedList<HashSet<String>> = LinkedList::new();
-        active_analyze(func, block, out, Some(&mut conflicts));
+        rv_active_analyze(func, block, out, Some(&mut conflicts));
         conflicts.iter()
             .for_each(|conflict| shader.add_conflict(conflict));
     }
@@ -97,25 +254,6 @@ impl rv_pass1::RVPass1Func {
                 }
             }
         }
-        for block in self.blocks.values() {
-            for (next_name, args) in &block.next {
-                let next_params = self.blocks.get(next_name)
-                    .expect("Next block not found in RVPass1Func")
-                    .params
-                    .clone();
-                assert!(args.len() == next_params.len(),
-                    "Next block args and params length mismatch: {} vs {}",
-                    args.len(), next_params.len());
-                for (arg, param) in args.iter().zip(next_params.iter()) {
-                    hints.entry(param.clone())
-                        .or_insert_with(HashSet::new)
-                        .insert(arg.clone());
-                    hints.entry(arg.clone())
-                        .or_insert_with(HashSet::new)
-                        .insert(param.clone());
-                }
-            }
-        }
         hints
     }
 }
@@ -132,20 +270,6 @@ impl rv_pass1::RVPass1Block {
                     .cloned().unwrap()
             });
         }
-        self.next.iter_mut()
-            .for_each(|(_, args)| {
-                *args = args.iter()
-                    .map(|arg| {
-                        color_map.get(arg)
-                            .cloned().unwrap()
-                    }).collect();
-        });
-        self.params.iter_mut()
-            .for_each(|param| {
-                *param = color_map.get(param)
-                    .cloned().unwrap();
-        });
-        
     }
 }
 

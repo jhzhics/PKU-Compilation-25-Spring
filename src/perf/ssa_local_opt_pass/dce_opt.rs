@@ -10,7 +10,7 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
         .flat_map(|(_, params)| params.iter().cloned())
         .collect::<HashSet<_>>();
     let mut actives = LinkedList::new();
-    req_active_analyze(&block.block, out, Some(&mut actives));
+    req_active_analyze(&block.block, &out, Some(&mut actives));
     let mut to_remove: Vec<usize> = Vec::new();
 
     let mut active_iter = actives.iter().skip(1);

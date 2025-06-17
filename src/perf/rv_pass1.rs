@@ -17,7 +17,7 @@ pub struct RVPass1Func {
     pub blocks: HashMap<String, RVPass1Block>,
     pub args: Vec<String>,
     pub is_return_i32: bool,
-    stack_size: usize,
+    pub stack_size: usize,
 
     // None if there is no function call, Some(n) if there is a function call with max n arguments
     pub func_call_argc: Option<usize>,
@@ -28,9 +28,8 @@ pub struct RVPass1Func {
 #[derive(Debug, Clone)]
 pub struct RVPass1Block {
     pub block: riscv::Block,
-    pub next: Vec<(String, Vec<String>)>, // Next blocks, with operands
+    pub next: Vec<String>, // Next blocks, with operands
     pub prev: Vec<String>, // Previous blocks, with operands
-    pub params: Vec<String>,
 }
 
 fn get_is_return_i32(ssa_func: &ssa_pass2::SSAFunc) -> bool {
@@ -97,10 +96,10 @@ pub fn pass(ssa_func: &ssa_pass2::SSAFunc) -> RVPass1Func {
     state.stack_size = max(
             0,
             func.func_call_argc.map_or(0,
-             |argc| 4 * argc.saturating_sub(8) as i32) + 4,
+             |argc| 4 * argc.saturating_sub(8) as i32),
         );
     for (_, block) in &ssa_func.blocks {
-        let rv_block = transform_block(block, &mut state, &func.epilogue);
+        let rv_block = transform_block(ssa_func, block, &mut state, &func.epilogue);
         func.blocks.insert(
             rv_block.block.name.clone(),
             rv_block,
@@ -125,17 +124,9 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
         },
         next: Vec::new(),
         prev: Vec::new(),
-        params: Vec::new(),
     };
     let vertices_set = func.get_vertices_set();
-    let goto_args = ssa_func.blocks[&ssa_func.entry].params.iter()
-        .filter(|&arg| vertices_set.contains(arg))
-        .map(|arg| format!("{}", arg))
-        .collect::<Vec<String>>();
-    prologue.next.push((
-        ssa_func.entry.clone(),
-        goto_args,
-    ));
+    prologue.next.push(ssa_func.entry.clone());
 
     for (i, arg) in func.args.iter().enumerate() {
         if !vertices_set.contains(arg) {
@@ -157,12 +148,11 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
     }
     let tmp = state.get_write_tmp_reg();
     prologue.block.instrs.push(Instr::new(&format!(
-        "li {}, {}",
-        tmp,
-        0 // To be filled
+        "li {}, $NEG_STACK_SIZE",
+        tmp
     )));
     prologue.block.instrs.push(Instr::new(&format!(
-        "sub {}, {}, {}",
+        "add {}, {}, {}",
         riscv::RV_SP_REG,
         riscv::RV_SP_REG,
         tmp
@@ -176,16 +166,6 @@ fn fill_prologue(func: &mut RVPass1Func, ssa_func: &ssa_pass2::SSAFunc, state: &
         prologue.block.name.clone(),
         prologue,
     );
-    let filterd_entry_params = ssa_func.blocks[&ssa_func.entry]
-        .params
-        .iter()
-        .filter(|& arg| vertices_set.contains(arg))
-        .cloned()
-        .collect::<Vec<String>>();
-
-    func.blocks.get_mut(&ssa_func.entry)
-        .expect("Entry block should exist in RVPass1Func")
-        .params = filterd_entry_params;
 
 }
 
@@ -198,12 +178,11 @@ fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc, state: 
         },
         next: vec![],
         prev: vec![],
-        params: Vec::new(),
     };
     epilogue.prev = func.blocks
         .values()
         .filter_map(|block| {
-            if block.next.iter().any(|(name, _)| name == &func.epilogue) {
+            if block.next.iter().any(|name| name == &func.epilogue) {
                 Some(block.block.name.clone())
             } else {
                 None
@@ -213,9 +192,8 @@ fn fill_epilogue(func: &mut RVPass1Func, _ssa_func: &ssa_pass2::SSAFunc, state: 
 
     let tmp = state.get_write_tmp_reg();
     epilogue.block.instrs.push(Instr::new(&format!(
-        "li {}, {}",
-        tmp,
-        0 // To be filled with the stack size
+        "li {}, $STACK_SIZE",
+        tmp
     )));
     epilogue.block.instrs.push(Instr::new(&format!(
         "add {}, {}, {}",
@@ -309,7 +287,7 @@ impl State {
     }
 }
 
-fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str)
+fn transform_block(func: &ssa_pass2::SSAFunc, block: &ssa_form::SSABlock, state: &mut State, epilogue: &str)
 -> RVPass1Block {
     state.reset_tmp_reg();
     let mut rv_block = RVPass1Block {
@@ -317,9 +295,9 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
             name: block.block.name.clone(),
             instrs: Vec::new(),
         },
-        next: block.next.clone(),
-        prev: block.prev.clone(),
-        params: block.params.clone(),
+        next: block.next.iter()
+            .map(|(name, _)| name.clone()).collect(),
+        prev: block.prev.clone()
     };
 
     for instr in &block.block.instrs {
@@ -328,6 +306,10 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                 .parse::<usize>()
                 .expect("Alloc instruction should have a valid size");
             state.stack_size += alloc_size as i32;
+            assert!(
+                alloc_size > 4,
+                "Size == 4 should be in virtual register, not in stack"
+            );
             if riscv::fit_in_imm12(state.stack_size) {
                 rv_block.block.instrs.push(Instr::new(&format!(
                     "addi {}, {}, {}",
@@ -407,10 +389,64 @@ fn transform_block(block: &ssa_form::SSABlock, state: &mut State, epilogue: &str
                 .instrs
                 .push(Instr::new(&format!("j {}", epilogue)));
             rv_block.next = vec![
-                (epilogue.to_string(), vec![])
+                epilogue.to_string()
             ];
         }
-        else {
+        else if instr.op == "j"
+        {
+            for (arg, param) in block.next.first().expect("Block should have at least one next block")
+                .1.iter().zip(
+                    func.blocks.get(&instr.operands[0])
+                        .expect("Next block should exist in RVPass1Func")
+                        .params.iter()
+                )
+            {
+                rv_block.block.instrs.push(Instr::new(&format!(
+                    "mv {}, {}",
+                    param, arg
+                )));
+            }
+            rv_block.block.instrs.push(instr.clone());
+        }
+        else if instr.op == "Br"
+        {
+            for (arg, param) in block.next.first().expect("Block should have at least one next block")
+                .1.iter().zip(
+                    func.blocks.get(&instr.operands[1])
+                        .expect("Next block should exist in RVPass1Func")
+                        .params.iter()
+                )
+            {
+                rv_block.block.instrs.push(Instr::new(&format!(
+                    "mv {}, {}",
+                    param, arg
+                )));
+            }
+            rv_block.block.instrs.push(Instr::new(&format!(
+                "bnez {}, {}",
+                instr.operands[0],
+                instr.operands[1]
+            )));
+            for (arg, param) in block.next.iter().skip(1).next()
+                .expect("Block should have at least one next block")
+                .1.iter().zip(
+                    func.blocks.get(&instr.operands[2])
+                        .expect("Next block should exist in RVPass1Func")
+                        .params.iter()
+                )
+            {
+                rv_block.block.instrs.push(Instr::new(&format!(
+                    "mv {}, {}",
+                    param, arg
+                )));
+            }
+            rv_block.block.instrs.push(Instr::new(&format!(
+                "j {}",
+                instr.operands[2]
+            )));
+        }
+        else
+        {
             rv_block.block.instrs.push(instr.clone());
         }
     }
@@ -426,16 +462,7 @@ impl RVPass1Func {
             instr.gen_vars().iter().cloned().chain(
                 instr.kill_vars().iter().cloned()
             ).collect::<Vec<_>>()
-        })
-        .chain(
-            self.blocks.values().flat_map(|block| block.params.iter().cloned())
-        )
-        .chain(
-            self.blocks.values().flat_map(|block| block.next.iter())
-                .flat_map(|(_name, ops)| {
-                    ops.iter().cloned()
-                })
-        ).collect()
+        }).collect()
     }
 
     #[allow(dead_code)]
@@ -446,9 +473,8 @@ impl RVPass1Func {
         inst_list.push_back(format!("{}:", self.name));
         for (_, block) in &self.blocks {
             inst_list.push_back(format!(
-                "{}({}):",
-                block.block.name,
-                block.params.join(", ")
+                "{}:",
+                block.block.name
             ));
 
             inst_list.extend({
@@ -457,15 +483,6 @@ impl RVPass1Func {
                 insts
             });
 
-            inst_list.push_back(format!(
-                "# Next: {}",
-                block
-                    .next
-                    .iter()
-                    .map(|(name, ops)| format!("{}({})", name, ops.join(", ")))
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            ));
             inst_list.push_back("".to_string());
         }
         inst_list

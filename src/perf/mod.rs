@@ -8,6 +8,7 @@ mod ssa_pass1;
 mod ssa_pass2;
 mod rv_pass1;
 mod rv_pass2;
+mod rv_pass3;
 mod rv_active_aly;
 
 use koopa;
@@ -43,18 +44,13 @@ pub fn compile(prog: koopa::ir::Program) -> String {
         .map(|f| rv_pass1::pass(f))
         .collect::<Vec<rv_pass1::RVPass1Func>>();
 
-    // rv_pass1_funcs.iter().for_each(|f| {
-    //     f.dump().iter().for_each(|s| {
-    //         println!("{}", s);
-    //     });
-    // });
-
     rv_pass1_funcs.iter_mut().for_each(|f| {
         rv_pass2::pass(f);
+        rv_pass3::pass(f);
     });
     
     rv_pass1_funcs.iter().for_each(|func| {
-        inst_list.extend(func.dump());
+        inst_list.extend(func.release_dump());
         inst_list.push_back("".to_string());
     });
 

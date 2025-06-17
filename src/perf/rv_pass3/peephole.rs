@@ -1,10 +1,16 @@
-//! This function performs constant propagation and folding on SSA form.
-
-use super::riscv::Instr;
 use std::collections::HashMap;
 
-pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
-    let mut changed = false;
+use crate::perf::riscv::{self, fit_in_imm12, fit_in_shamt};
+
+use super::rv_pass1::RVPass1Block;
+use super::riscv::Instr;
+use super::rv_active_aly::extract_register_from_mem_operand;
+
+fn is_power_of_two(n: i32) -> bool {
+    n > 0 && (n & (n - 1)) == 0
+}
+
+pub fn pass(block: &mut RVPass1Block) {
     let mut constant_map: HashMap<String, i32> = HashMap::new();
     for inst in &mut block.block.instrs {
         if inst.op == "li" {
@@ -28,17 +34,12 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 ^ val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
+                } else if fit_in_imm12(*val1) {
+                    *inst = Instr::new(&format!("xori {}, {}, {}", inst.operands[0], inst.operands[2], val1));
                 }
-                else if *val1 == 0 {
-                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
-                    changed = true;
-                }
-            }
-            else if let Some(val) = constant_map.get(&inst.operands[2]) {
-                if *val == 0 {
-                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
-                    changed = true;
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if fit_in_imm12(*val) {
+                    *inst = Instr::new(&format!("xori {}, {}, {}", inst.operands[0], inst.operands[1], val));
                 }
             }
         } else if inst.op == "seqz" {
@@ -51,7 +52,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                 let result = if *val == 0 { 1 } else { 0 };
                 constant_map.insert(inst.operands[0].clone(), result);
                 *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                changed = true;
             }
         } else if inst.op == "add" {
             assert!(
@@ -64,16 +64,12 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 + val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
+                } else if fit_in_imm12(*val1) {
+                    *inst = Instr::new(&format!("addi {}, {}, {}", inst.operands[0], inst.operands[2], val1));
                 }
-                else if *val1 == 0 {
-                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
-                    changed = true;
-                }
-            }  else if let Some(val) = constant_map.get(&inst.operands[2]) {
-                if *val == 0 {
-                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
-                    changed = true;
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if fit_in_imm12(*val) {
+                    *inst = Instr::new(&format!("addi {}, {}, {}", inst.operands[0], inst.operands[1], val));
                 }
             }
         } else if inst.op == "sub" {
@@ -87,12 +83,12 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 - val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
+                } else if *val1 == 0 {
+                    inst.operands[1] = riscv::RV_ZERO_REG.to_string();
                 }
             } else if let Some(val) = constant_map.get(&inst.operands[2]) {
-                if *val == 0 {
-                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
-                    changed = true;
+                if fit_in_imm12(-(*val)) {
+                    *inst = Instr::new(&format!("addi {}, {}, {}", inst.operands[0], inst.operands[1], -val));
                 }
             }
         } else if inst.op == "mul" {
@@ -106,24 +102,20 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 * val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
-                }
-                else if *val1 == 1 {
-                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
-                    changed = true;
                 } else if *val1 == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
-                    changed = true;
+                } else if is_power_of_two(*val1) && fit_in_shamt(*val1) {
+                    let shamt = val1.ilog(2);
+                    *inst = Instr::new(&format!("slli {}, {}, {}", inst.operands[0], inst.operands[2], shamt));
                 }
             } else if let Some(val) = constant_map.get(&inst.operands[2]) {
-                if *val == 1 {
-                    *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
-                    changed = true;
-                } else if *val == 0 {
+                if *val == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
-                    changed = true;
+                } else if is_power_of_two(*val) && fit_in_shamt(*val) {
+                    let shamt = val.ilog(2);
+                    *inst = Instr::new(&format!("slli {}, {}, {}", inst.operands[0], inst.operands[1], shamt));
                 }
             }
         } else if inst.op == "div" {
@@ -138,12 +130,12 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 / val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
+                } else if *val1 == 0 {
+                    *inst = Instr::new(&format!("div {}, {}, {}", inst.operands[0], riscv::RV_ZERO_REG, inst.operands[2]));
                 }
             } else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == 1 {
                     *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
-                    changed = true;
                 }
             }
         } else if inst.op == "rem" {
@@ -158,13 +150,13 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 % val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
+                } else if *val1 == 0 {
+                    *inst = Instr::new(&format!("rem {}, {}, {}", inst.operands[0], riscv::RV_ZERO_REG, inst.operands[2]));
                 }
             } else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == 1 {
                     constant_map.insert(inst.operands[0].clone(), 0);
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
-                    changed = true;
                 }
             }
         } else if inst.op == "slt" {
@@ -178,20 +170,16 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = if val1 < val2 { 1 } else { 0 };
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
+                } else if *val1 == 0 {
+                    *inst = Instr::new(&format!("slt {}, {}, {}", inst.operands[0], riscv::RV_ZERO_REG, inst.operands[2]));
+                }
+            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+                if fit_in_imm12(*val) {
+                    *inst = Instr::new(&format!("slti {}, {}, {}", inst.operands[0], inst.operands[1], val));
                 }
             }
         } else if inst.op == "sgt" {
-            assert!(
-                inst.operands.len() == 3,
-                "sgt instruction must have exactly three operands: {}",
-                inst
-            );
-            *inst = Instr::new(&format!(
-                "slt {}, {}, {}",
-                inst.operands[0], inst.operands[2], inst.operands[1]
-            ));
-            changed = true;
+            panic!("sgt instruction should not appears in peephole optimization: {}", inst);
         } else if inst.op == "xori" {
             assert!(
                 inst.operands.len() == 3,
@@ -203,7 +191,9 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 ^ val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
+                }
+                else {
+                    panic!("Invalid immediate value in xori instruction: {}", inst);
                 }
             }
         } else if inst.op == "snez" {
@@ -216,7 +206,6 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                 let result = if *val != 0 { 1 } else { 0 };
                 constant_map.insert(inst.operands[0].clone(), result);
                 *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                changed = true;
             }
         } else if inst.op == "and" {
             assert!(
@@ -229,23 +218,22 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 & val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
                 } else if *val1 == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
-                    changed = true;
+                } else if fit_in_imm12(*val1) {
+                    *inst = Instr::new(&format!("andi {}, {}, {}", inst.operands[0], inst.operands[2], val1));
                 } else if *val1 == -1 {
                     *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
-                    changed = true;
                 }
-            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+            }  else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == 0 {
                     constant_map.insert(inst.operands[0].clone(), 0);
                     *inst = Instr::new(&format!("li {}, 0", inst.operands[0]));
-                    changed = true;
+                } else if fit_in_imm12(*val) {
+                    *inst = Instr::new(&format!("andi {}, {}, {}", inst.operands[0], inst.operands[1], val));
                 } else if *val == -1 {
                     *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
-                    changed = true;
                 }
             }
         } else if inst.op == "or" {
@@ -259,23 +247,22 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                     let result = val1 | val2;
                     constant_map.insert(inst.operands[0].clone(), result);
                     *inst = Instr::new(&format!("li {}, {}", inst.operands[0], result));
-                    changed = true;
-                } else if *val1 == -1 {
+                } else  if *val1 == -1 {
                     constant_map.insert(inst.operands[0].clone(), -1);
                     *inst = Instr::new(&format!("li {}, -1", inst.operands[0]));
-                    changed = true;
                 } else if *val1 == 0 {
                     *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[2]));
-                    changed = true;
+                } else if fit_in_imm12(*val1) {
+                    *inst = Instr::new(&format!("ori {}, {}, {}", inst.operands[0], inst.operands[2], val1));
                 }
-            } else if let Some(val) = constant_map.get(&inst.operands[2]) {
+            }  else if let Some(val) = constant_map.get(&inst.operands[2]) {
                 if *val == -1 {
                     constant_map.insert(inst.operands[0].clone(), -1);
                     *inst = Instr::new(&format!("li {}, -1", inst.operands[0]));
-                    changed = true;
-                } else if *val == 0 {
+                }  else if *val == 0 {
                     *inst = Instr::new(&format!("mv {}, {}", inst.operands[0], inst.operands[1]));
-                    changed = true;
+                } else if fit_in_imm12(*val) {
+                    *inst = Instr::new(&format!("ori {}, {}, {}", inst.operands[0], inst.operands[1], val));
                 }
             }
         } else if inst.op == "sw" {
@@ -290,9 +277,9 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                 "mv instruction must have exactly two operands: {}",
                 inst
             );
-            if let Some(val) = constant_map.get(&inst.operands[1]) {
+            if let Some(&val) = constant_map.get(&inst.operands[1]) {
+                constant_map.insert(inst.operands[0].clone(), val);
                 *inst = Instr::new(&format!("li {}, {}", inst.operands[0], val));
-                constant_map.insert(inst.operands[0].clone(), *val);
             }
         } else if inst.op == "la" {
             assert!(
@@ -312,39 +299,77 @@ pub fn pass(block: &mut super::ssa_form::SSABlock) -> bool {
                 "j instruction must have exactly one operand: {}",
                 inst
             );
-        } else if inst.op == "Ret" {
-            assert!(
-                inst.operands.len() <= 1,
-                "Ret instruction must have <= 1 operand: {}",
-                inst
-            );
-        } else if inst.op == "Alloc" {
+        } else if inst.op == "bnez" {
             assert!(
                 inst.operands.len() == 2,
-                "Alloc instruction must have exactly two operands: {}",
+                "bne instruction must have exactly two operands: {}",
                 inst
             );
-        } else if inst.op == "Br" {
+        }
+        else if inst.op == "call" {
             assert!(
-                inst.operands.len() == 3,
-                "Br instruction must have exactly three operands: {}",
+                inst.operands.len() == 1,
+                "call instruction must have exactly one operand: {}",
                 inst
             );
-        } else if inst.op == "Call_1" {
-            assert!(
-                inst.operands.len() >= 1,
-                "Call_1 instruction must have at least one operand: {}",
-                inst
-            );
-        } else if inst.op == "Call_2" {
-            assert!(
-                inst.operands.len() >= 2,
-                "Call_2 instruction must have at least two operands: {}",
-                inst
-            );
+        } else if inst.op == "ret" {
+            assert!(inst.operands.is_empty(), "ret instruction must have no operands: {}", inst);
         } else {
             panic!("Unknown instruction: {}", inst);
         }
     }
-    changed
+
+    for (i, inst) in block.block.instrs.clone().iter().enumerate() {
+        if i == 0
+        {
+            continue;
+        }
+        if block.block.instrs[i - 1].op == "addi"{
+            let last_inst = &block.block.instrs[i - 1];
+            let last_imm = last_inst.operands[2].parse::<i32>().unwrap();
+            let last_dst_reg = &last_inst.operands[0];
+            let last_src_reg = &last_inst.operands[1];
+            if inst.op == "sw"
+            {
+                assert!(
+                    inst.operands.len() == 2,
+                    "sw instruction must have exactly two operands: {}",
+                    inst
+                );
+                if let Some((off, reg)) = extract_register_from_mem_operand(&inst.operands[1]) {
+                    let offset = off.parse::<i32>().unwrap();
+                    if &reg != last_dst_reg {
+                        continue;
+                    }
+                    let new_new_offset = offset + last_imm;
+                    if fit_in_imm12(new_new_offset) {
+                        block.block.instrs[i] = Instr::new(&format!("sw {}, {}({})", inst.operands[0], new_new_offset, last_src_reg));
+                    }
+                } else {
+                    panic!("Invalid memory operand in sw instruction: {}", inst);
+                };
+
+            }
+            else if inst.op == "lw" {
+                assert!(
+                    inst.operands.len() == 2,
+                    "lw instruction must have exactly two operands: {}",
+                    inst
+                );
+                if let Some((off, reg)) = extract_register_from_mem_operand(&inst.operands[1]) {
+                    let offset = off.parse::<i32>().unwrap();
+                    if &reg != last_dst_reg {
+                        continue;
+                    }
+                    let new_new_offset = offset + last_imm;
+                    if fit_in_imm12(new_new_offset) {
+                        block.block.instrs[i] = Instr::new(&format!("lw {}, {}({})", inst.operands[0], new_new_offset, last_src_reg));
+                    }
+                } else {
+                    panic!("Invalid memory operand in lw instruction: {}", inst);
+                };
+
+            }
+        }
+    }   
 }

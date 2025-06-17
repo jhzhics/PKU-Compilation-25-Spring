@@ -9,7 +9,7 @@ use super::rv_pass1::RVPass1Func;
 use super::riscv::Instr;
 
 // Extracts the number and register from a memory operand string.
-fn extract_register_from_mem_operand(operand_str: &str) -> Option<(String, String)> {
+pub fn extract_register_from_mem_operand(operand_str: &str) -> Option<(String, String)> {
     // Look for the last '(' and first ')' to handle cases like 'offset(register)'
     if let Some(open_paren_idx) = operand_str.rfind('(') {
         if let Some(close_paren_idx) = operand_str.rfind(')') {
@@ -230,7 +230,13 @@ impl Instr {
         {
             assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
         }
-        else {
+        else if self.op == "bnez"
+        {
+            assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
+            self.operands[0] = f(self.operands[0].clone());
+        }
+        else
+        {
             panic!("Unknown instruction: {}", self);
         }
     }
@@ -403,6 +409,9 @@ impl Instr {
         } else if self.op == "call" 
         {
             assert!(self.operands.len() == 1, "call instruction must have exactly one operand: {}", self);
+        } else if self.op == "bnez"
+        {
+            assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
         } else
         {
             panic!("Unknown instruction: {}", self);
@@ -586,7 +595,32 @@ impl Instr {
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<String>>()
-        } else
+        } else if self.op == "bnez"
+        {
+            assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
+            vec![]
+        } else if self.op == "ret"
+        {
+            assert!(self.operands.len() == 0, "ret instruction must have no operands: {}", self);
+            vec![]
+        } else if self.op == "andi" {
+            assert!(self.operands.len() == 3, "andi instruction must have exactly three operands: {}", self);
+            vec![self.operands[0].clone()]
+        } else if self.op == "ori"
+        {
+            assert!(self.operands.len() == 3, "ori instruction must have exactly three operands: {}", self);
+            vec![self.operands[0].clone()]
+        } else if self.op == "slli"
+        {
+            assert!(self.operands.len() == 3, "slli instruction must have exactly three operands: {}", self);
+            vec![self.operands[0].clone()]
+        }
+        else if self.op == "addi"
+        {
+            assert!(self.operands.len() == 3, "addi instruction must have exactly three operands: {}", self);
+            vec![self.operands[0].clone()]
+        }
+        else
         {
             panic!("Unknown instruction: {}", self);
         }
@@ -795,15 +829,45 @@ impl Instr {
                 .take(argc)
                 .map(|s| s.to_string())
                 .collect::<Vec<String>>()
-        } else
+        } else if self.op == "bnez"
+        {
+            assert!(self.operands.len() == 2, "bnez instruction must have exactly two operands: {}", self);
+            vec![self.operands[0].clone()]
+        } else if self.op == "ret"
+        {
+            assert!(self.operands.len() == 0, "ret instruction must have no operands: {}", self);
+            let is_return_i32 = self.comment.trim().parse::<i32>().unwrap() != 0;
+            if is_return_i32 {
+                vec!["a0".to_string()]
+            } else {
+                vec![]
+            }
+        } else if self.op == "andi" {
+            assert!(self.operands.len() == 3, "andi instruction must have exactly three operands: {}", self);
+            vec![self.operands[1].clone()]
+        } else if self.op == "ori"
+        {
+            assert!(self.operands.len() == 3, "ori instruction must have exactly three operands: {}", self);
+            vec![self.operands[1].clone()]
+        } else if self.op == "slli"
+        {
+            assert!(self.operands.len() == 3, "slli instruction must have exactly three operands: {}", self);
+            vec![self.operands[1].clone()]
+        }
+        else if self.op == "addi"
+        {
+            assert!(self.operands.len() == 3, "addi instruction must have exactly three operands: {}", self);
+            vec![self.operands[1].clone()]
+        }
+        else
         {
             panic!("Unknown instruction: {}", self);
         }
     }
 }
 
-pub fn active_analyze(
-    func: &RVPass1Func,
+pub fn rv_active_analyze(
+    _func: &RVPass1Func,
     block: &RVPass1Block,
     out: HashSet<String>,
     conflicts: Option<&mut LinkedList<HashSet<String>>>,
@@ -811,23 +875,6 @@ pub fn active_analyze(
     let mut bindings = LinkedList::new();
     let conflicts = conflicts.unwrap_or(&mut bindings);
     let mut now = out;
-    let out_kill = block.next.iter().map(|(name, _)| {
-        let next_block = func.blocks.get(name).expect("Next block not found");
-        next_block.params.iter().cloned().collect::<HashSet<String>>()
-    }).collect::<Vec<HashSet<String>>>();
-    let out_kill = out_kill.into_iter().fold(HashSet::new(), |acc, set| {
-        acc.intersection(&set).cloned().collect::<HashSet<String>>()
-    });
-    let out_gen = block.next.iter().flat_map(|(_, params)| params.iter().cloned())
-        .collect::<HashSet<String>>();
-
-    conflicts.push_front(now.clone());
-    for var in out_kill {
-        now.remove(&var);
-    }
-    for var in out_gen {
-        now.insert(var);
-    }
     conflicts.push_front(now.clone());
     for i in (0..block.block.instrs.len()).rev() {
         let instr = &block.block.instrs[i];
